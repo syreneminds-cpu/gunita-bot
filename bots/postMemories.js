@@ -67,6 +67,13 @@ async function run() {
             memoriesCount: 0,
             isBot: true
         });
+        
+        // UPDATE THE KEEPER COUNTER
+        const statsRef = db.collection('stats').doc('userCount');
+        await statsRef.set({
+            count: admin.firestore.FieldValue.increment(1)
+        }, { merge: true });
+
         console.log(`Created new user: ${username}`);
       }
 
