@@ -4194,12 +4194,24 @@
 
         // ==================== FEATURE: I'M FEELING LOST ====================
         const lostBtn = document.getElementById('lostBtn');
+        lostBtn.title = "Take me to a random memory"; // Adds a hover tooltip
+        
         lostBtn.addEventListener('click', () => {
             const validMemories = memories.filter(m => m.coords && m.coords.lat && m.coords.lng);
             if (validMemories.length === 0) { alert("No memories have been placed yet. Be the first!"); return; }
+            
+            // Visual feedback
+            lostBtn.innerHTML = `<svg style="animation: spin 1s linear infinite;" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L7.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> <span>Drifting...</span>`;
+
             const randomMemory = validMemories[Math.floor(Math.random() * validMemories.length)];
+            
             map.flyTo([randomMemory.coords.lat, randomMemory.coords.lng], 10, { animate: true, duration: 2.5 });
-            setTimeout(() => { openViewModal(randomMemory); }, 1500);
+            
+            setTimeout(() => { 
+                openViewModal(randomMemory); 
+                // Reset button text after opening modal
+                lostBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg> <span>Drift</span>`;
+            }, 1500);
         });
 
         // ==================== FEATURE: GHOST TRAILS (Custom Dropdown) ====================
@@ -4275,3 +4287,4 @@
 </body>
 
 </html>
+
