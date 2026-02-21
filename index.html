@@ -637,6 +637,33 @@
 
         .modal-overlay.active .modal-card { transform: translateY(0) scale(1); opacity: 1; }
 
+                /* Action Buttons in Footer */
+        .view-action-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, opacity 0.2s;
+            opacity: 0.7;
+        }
+        
+        .view-action-btn:hover {
+            transform: scale(1.15);
+            opacity: 1;
+        }
+        
+        .view-action-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+        
+        .burn-btn:hover { color: #E53E3E !important; }
+        .report-btn:hover { color: #F6AD55 !important; }
+        
         /* Form Elements */
         .modal-title { 
             padding: 2.5rem 2.5rem 0 2.5rem; 
@@ -4504,6 +4531,7 @@
 </body>
 
 </html>
+
 
 
 
