@@ -1,0 +1,4276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUNITA - A place where memories live</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+    
+     <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    
+    <!-- html2canvas for capturing memories -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <style>
+        :root {
+            /* Gunita Light Theme */
+            --bg-primary: #FDFBF7;
+            --bg-secondary: #F7F2EA;
+            --bg-tertiary: #EFE9DD;
+            --text-primary: #2C2824;
+            --text-secondary: #5C564E;
+            --text-muted: #8A8279;
+            
+            /* Accents */
+            --accent: #9E8B7C;
+            --accent-warm: #D4896A;
+            --accent-glow: #E8A87C;
+            
+            --border: #2C2824;
+            --border-subtle: rgba(44, 40, 36, 0.15);
+            --grain-opacity: 0.035;
+            
+            /* Map specific */
+            --map-marker-color: #D4896A;
+            --map-marker-glow: #E8A87C;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #0A0908;
+            --bg-secondary: #12110F;
+            --bg-tertiary: #1A1917;
+            --text-primary: #EBE6DF;
+            --text-secondary: #B5AFA6;
+            --text-muted: #7A746A;
+            
+            --accent: #C9B5A4;
+            --accent-warm: #FF8A55;
+            --accent-glow: #FF9E6D;
+
+            --border: #EBE6DF;
+            --border-subtle: rgba(235, 230, 223, 0.12);
+            --grain-opacity: 0.025;
+            
+            --map-marker-color: #FF8A55;
+            --map-marker-glow: #FF9E6D;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Lora', serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+            transition: background-color 0.8s ease, color 0.8s ease;
+        }
+
+        /* Ambient Background */
+        .bg-base {
+            position: fixed;
+            inset: 0;
+            background: 
+                radial-gradient(ellipse 120% 80% at 50% 120%, var(--bg-secondary) 0%, transparent 50%),
+                radial-gradient(ellipse 80% 50% at 80% 20%, var(--bg-tertiary) 0%, transparent 40%),
+                var(--bg-primary);
+            z-index: 0;
+            transition: all 0.8s ease;
+        }
+
+        .vignette {
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.08) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        [data-theme="dark"] .vignette {
+            background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.5) 100%);
+        }
+
+        .grain-overlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2; 
+            opacity: var(--grain-opacity);
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        .fire-glow {
+            position: fixed;
+            bottom: -20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60vw;
+            height: 40vh;
+            background: radial-gradient(ellipse at center bottom, 
+                rgba(232, 168, 124, 0.1) 0%, 
+                rgba(212, 137, 106, 0.05) 30%,
+                transparent 70%);
+            z-index: 3;
+            pointer-events: none;
+            animation: fireFlicker 6s ease-in-out infinite;
+        }
+
+        [data-theme="dark"] .fire-glow {
+            background: radial-gradient(ellipse at center bottom, 
+                rgba(255, 158, 109, 0.2) 0%, 
+                rgba(255, 138, 85, 0.1) 30%,
+                transparent 70%);
+        }
+
+        @keyframes fireFlicker {
+            0%, 100% { opacity: 1; transform: translateX(-50%) scaleX(1) scaleY(1); }
+            50% { opacity: 0.85; transform: translateX(-50%) scaleX(1.02) scaleY(0.98); }
+        }
+
+        #embers-canvas {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 4;
+            transition: opacity 0.5s ease;
+        }
+
+        /* Top Right Controls Container */
+        .top-controls {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            z-index: 1000; /* High z-index ensures buttons are always clickable */
+        }
+
+        /* User Area */
+        .user-area {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .user-greeting {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .user-greeting strong {
+            color: var(--accent-warm);
+            font-weight: 500;
+        }
+
+        .btn-auth {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            padding: 0.6rem 1.2rem;
+            border-radius: 50px;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.95rem;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-auth:hover {
+            background: var(--text-primary);
+            color: var(--bg-primary);
+            border-color: var(--text-primary);
+        }
+
+        .btn-auth.logout {
+            background: transparent;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+        }
+
+        .btn-auth.logout:hover {
+            border-color: var(--accent-warm);
+            color: var(--accent-warm);
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--text-secondary);
+        }
+
+        .theme-toggle:hover {
+            background: var(--text-primary);
+            color: var(--bg-primary);
+            transform: rotate(180deg);
+            border-color: var(--text-primary);
+        }
+        .theme-toggle svg { width: 20px; height: 20px; fill: currentColor; }
+        .icon-moon { display: block; }
+        .icon-sun { display: none; }
+        [data-theme="dark"] .icon-moon { display: none; }
+        [data-theme="dark"] .icon-sun { display: block; }
+
+        /* ==================== WHITEPAPER FAB ==================== */
+        .whitepaper-fab {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 56px;
+            height: 56px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+            color: var(--text-secondary);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .whitepaper-fab:hover {
+            background: var(--accent-warm);
+            color: white;
+            transform: scale(1.1) rotate(5deg);
+            border-color: var(--accent-warm);
+            box-shadow: 0 8px 30px rgba(212, 137, 106, 0.3);
+        }
+
+        .whitepaper-fab svg {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+        }
+
+        .whitepaper-fab::before {
+            content: 'Whitepaper';
+            position: absolute;
+            right: 70px;
+            background: var(--text-primary);
+            color: var(--bg-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-family: 'Cormorant Garamond', serif;
+            letter-spacing: 0.1em;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform: translateX(10px);
+        }
+
+        .whitepaper-fab:hover::before {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        /* Suggestion FAB */
+        .suggestion-fab {
+            position: fixed;
+            bottom: 2rem;
+            right: 6.5rem; /* Adjusted to sit next to whitepaper */
+            width: 50px;
+            height: 50px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+            color: var(--text-secondary);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .suggestion-fab:hover {
+            background: var(--accent);
+            color: white;
+            transform: scale(1.1);
+            border-color: var(--accent);
+        }
+
+        .suggestion-fab svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        /* Main Content */
+        main {
+            position: relative;
+            z-index: 10;
+            min-height: 100vh;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 3rem 2rem;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+
+        main.hidden { opacity: 0; visibility: hidden; position: absolute; top: 0; left: 0; }
+
+        h1 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(4rem, 15vw, 9rem);
+            font-weight: 300;
+            letter-spacing: 0.3em;
+            margin-bottom: 1.5rem;
+            text-transform: uppercase;
+            color: var(--text-primary);
+            opacity: 0;
+            animation: revealTitle 1.5s ease-out 0.3s forwards;
+        }
+
+        h1::after {
+            content: '';
+            display: block;
+            width: 0;
+            height: 1px;
+            margin: 1.5rem auto 0;
+            background: linear-gradient(90deg, transparent, var(--accent-warm), transparent);
+            animation: lineExpand 2s ease-out 1s forwards;
+        }
+
+        @keyframes revealTitle { from { opacity: 0; letter-spacing: 0.5em; } to { opacity: 1; letter-spacing: 0.3em; } }
+        @keyframes lineExpand { to { width: 60%; } }
+
+        .tagline {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(1.2rem, 3vw, 1.6rem);
+            font-style: italic;
+            color: var(--text-muted);
+            margin-bottom: 4rem;
+            line-height: 1.8;
+            max-width: 600px;
+            opacity: 0;
+            animation: fadeUp 1s ease 0.8s forwards;
+        }
+
+        .description {
+            font-size: clamp(1rem, 2vw, 1.1rem);
+            line-height: 2.2;
+            color: var(--text-secondary);
+            margin-bottom: 4rem;
+            max-width: 650px;
+            opacity: 0;
+            animation: fadeUp 1s ease 1.2s forwards;
+        }
+
+        .highlight {
+            position: relative;
+            color: var(--text-primary);
+            font-weight: 500;
+            padding: 0 0.1em;
+            transition: color 0.3s ease;
+            background: linear-gradient(to-top, transparent 60%, rgba(232, 168, 124, 0.15) 60%);
+        }
+        
+        .highlight:hover { color: var(--accent-warm); background: none; text-shadow: 0 0 8px var(--accent-glow); }
+
+        .cta-container { opacity: 0; animation: fadeUp 1s ease 1.8s forwards; }
+
+        .btn-enter {
+            position: relative;
+            display: inline-block;
+            padding: 1.2rem 3.5rem;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(1rem, 2.5vw, 1.1rem);
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+
+        .btn-enter::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 0; height: 0;
+            background: var(--accent-warm);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s ease, height 0.6s ease;
+            z-index: -1;
+        }
+
+        .btn-enter:hover { color: var(--bg-primary); letter-spacing: 0.35em; border-color: var(--accent-warm); }
+        .btn-enter:hover::before { width: 400px; height: 400px; }
+
+        .subtle-text { display: block; margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-muted); font-style: italic; }
+
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ==================== MAP OVERLAY ==================== */
+        #map-overlay {
+            position: fixed; inset: 0; z-index: 500;
+            background-color: var(--bg-primary);
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.8s ease, visibility 0.8s ease; overflow: hidden;
+        }
+        #map-overlay.active { opacity: 1; visibility: visible; }
+
+        .leaflet-container { background: var(--bg-primary) !important; font-family: 'Lora', serif !important; }
+        
+        .map-close {
+            position: absolute; top: 2rem; right: 2rem;
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            color: var(--text-primary); width: 48px; height: 48px; border-radius: 50%;
+            cursor: pointer; font-size: 1.8rem; z-index: 1000; transition: all 0.3s ease;
+            display: flex; align-items: center; justify-content: center; line-height: 1;
+        }
+        .map-close:hover { background: var(--accent-warm); color: var(--bg-primary); transform: rotate(90deg); }
+
+        .map-header { position: absolute; top: 2rem; left: 2rem; z-index: 1000; color: var(--text-primary); pointer-events: none; }
+        .map-header h2 { font-family: 'Cormorant Garamond', serif; font-weight: 300; font-size: 1.8rem; letter-spacing: 0.25em; text-transform: uppercase; }
+        .map-header p { font-style: italic; color: var(--text-muted); font-size: 1rem; }
+
+                /* Filter Controls on Map - Aesthetic Update */
+        .map-filter-container {
+            position: absolute;
+            top: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(253, 251, 247, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(44, 40, 36, 0.08);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+        }
+
+        [data-theme="dark"] .map-filter-container {
+            background: rgba(18, 17, 15, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .filter-icon {
+            width: 16px;
+            height: 16px;
+            fill: var(--accent-warm);
+            pointer-events: none;
+        }
+
+        .filter-dropdown {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            padding: 0.2rem 2rem 0.2rem 0.5rem; 
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.05rem;
+            font-weight: 500;
+            cursor: pointer;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23D4896A' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0rem center; 
+            transition: all 0.3s ease;
+        }
+        
+        .filter-dropdown:hover { color: var(--accent-warm); }
+        .filter-dropdown option { background: var(--bg-secondary); color: var(--text-primary); font-family: 'Lora', serif; }
+
+        .loading-indicator {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: var(--text-muted); font-style: italic; z-index: 999; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .spinner {
+            width: 30px; height: 30px; border: 3px solid var(--border-subtle);
+            border-top-color: var(--accent-warm); border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 1rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ==================== CLUSTERED MARKER ==================== */
+        .marker-cluster {
+            background: var(--map-marker-color); border-radius: 50%; color: white;
+            display: flex; justify-content: center; align-items: center;
+            font-family: 'Lora', serif; font-weight: 600;
+            box-shadow: 0 0 0 4px rgba(212, 137, 106, 0.2); transition: all 0.3s ease; cursor: pointer;
+        }
+        .marker-cluster::before {
+            content: ''; position: absolute; width: 100%; height: 100%; border-radius: 50%;
+            background: var(--map-marker-color); opacity: 0.6; animation: markerPulse 2.5s ease-in-out infinite; z-index: -1;
+        }
+        .marker-cluster:hover { transform: scale(1.1); z-index: 9999 !important; }
+        @keyframes markerPulse { 0% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.5); opacity: 0.2; } 100% { transform: scale(1); opacity: 0.6; } }
+
+        /* ==================== SUCCESS TOAST ==================== */
+        .success-toast {
+            position: fixed;
+            bottom: 6rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: linear-gradient(135deg, var(--accent-warm), #B86A4C);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1rem;
+            letter-spacing: 0.1em;
+            box-shadow: 0 10px 40px rgba(212, 137, 106, 0.4);
+            z-index: 2000;
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            pointer-events: none;
+        }
+        .success-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .success-toast svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+
+        /* Notification Toast (Map specific) */
+        .notification-toast {
+            position: absolute;
+            top: 5rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-warm);
+            color: var(--text-primary);
+            padding: 0.8rem 1.5rem;
+            border-radius: 50px;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.95rem;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            pointer-events: none;
+        }
+        
+        .notification-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        .notification-toast svg {
+            width: 18px;
+            height: 18px;
+            fill: var(--accent-warm);
+        }
+
+        /* ==================== AESTHETIC MODALS ==================== */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(16px);
+            z-index: 1500; display: flex; justify-content: center; align-items: center;
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.4s ease, visibility 0.4s ease; padding: 1rem;
+        }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+
+        .modal-card {
+            background: var(--bg-secondary); background: rgba(253, 251, 247, 0.95);
+            border: 1px solid rgba(44, 40, 36, 0.08);
+            width: 100%; max-width: 400px;
+            padding: 0; border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.15);
+            transform: translateY(40px) scale(0.95); opacity: 0;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease;
+            
+            /* THIS IS THE FIX: Make the modal scrollable */
+            overflow-y: auto; 
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch; /* Smooth scroll on iPhones */
+            
+            max-height: 90vh; /* Stops it from being taller than the screen */
+            display: flex; flex-direction: column; position: relative;
+        }
+        
+        [data-theme="dark"] .modal-card {
+            background: rgba(26, 25, 23, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+        }
+
+        .modal-overlay.active .modal-card { transform: translateY(0) scale(1); opacity: 1; }
+
+        /* Form Elements */
+        .modal-title { 
+            padding: 2.5rem 2.5rem 0 2.5rem; 
+            font-family: 'Cormorant Garamond', serif; 
+            font-size: 1.8rem; 
+            font-weight: 400; 
+            letter-spacing: 0.1em; 
+            color: var(--text-primary);
+            text-align: center;
+        }
+        
+        .modal-subtitle {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 0.5rem 2rem 1rem;
+        }
+        
+        .form-group { margin-bottom: 1.5rem; padding: 0 2.5rem; }
+        .form-label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.8rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .auth-input, .message-input {
+            width: 100%;
+            padding: 1rem 1.2rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-family: 'Lora', serif;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .auth-input:focus, .message-input:focus {
+            border-color: var(--accent-warm);
+            box-shadow: 0 0 0 3px rgba(212, 137, 106, 0.1);
+        }
+
+        .type-selector { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.5rem; justify-content: center; }
+        .type-btn {
+            background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary);
+            padding: 0.6rem 1.2rem; border-radius: 50px; font-family: 'Lora', serif; font-size: 0.9rem; cursor: pointer; transition: all 0.3s ease;
+        }
+        .type-btn:hover { border-color: var(--accent-warm); color: var(--accent-warm); background: rgba(212, 137, 106, 0.1); }
+        .type-btn.active { background: var(--accent-warm); color: white; border-color: var(--accent-warm); box-shadow: 0 4px 10px rgba(212, 137, 106, 0.3); }
+
+        .message-input {
+            min-height: 130px; 
+            resize: none; 
+        }
+
+        .tiktok-section { margin-bottom: 1.5rem; padding: 0 2.5rem; }
+        .tiktok-toggle { display: flex; align-items: center; gap: 0.75rem; cursor: pointer; user-select: none; }
+        .tiktok-toggle svg { width: 20px; height: 20px; fill: var(--text-secondary); transition: fill 0.3s ease; }
+        .tiktok-toggle:hover svg { fill: var(--text-primary); }
+        .tiktok-input-wrapper { margin-top: 0.8rem; display: none; }
+        .tiktok-input-wrapper.active { display: block; }
+        .tiktok-input {
+            width: 100%; padding: 0.8rem 1rem; background: var(--bg-primary); border: 1px dashed var(--border-subtle);
+            border-radius: 12px; color: var(--text-primary); font-family: 'Lora', serif; outline: none;
+        }
+        .tiktok-input:focus { border-color: var(--accent-warm); border-style: solid; }
+        
+        .video-loading-notice {
+            background: linear-gradient(135deg, rgba(212, 137, 106, 0.1), rgba(232, 168, 124, 0.05));
+            border: 1px dashed var(--accent-warm);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            margin-top: 0.8rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-style: italic;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .video-loading-notice svg {
+            width: 16px;
+            height: 16px;
+            fill: var(--accent-warm);
+            flex-shrink: 0;
+        }
+
+        .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding: 0 2.5rem 2.5rem 2.5rem; }
+        .btn-cancel { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-family: 'Lora', serif; font-size: 0.9rem; padding: 0.8rem 1.2rem; }
+        .btn-cancel:hover { color: var(--text-primary); }
+        .btn-send {
+            background: var(--accent-warm); border: none; color: white;
+            padding: 0.9rem 2.5rem; font-family: 'Cormorant Garamond', serif; font-size: 1rem;
+            letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; border-radius: 50px;
+            transition: background 0.3s ease, transform 0.2s ease; box-shadow: 0 8px 20px rgba(212, 137, 106, 0.3);
+        }
+        .btn-send:hover { background: #B86A4C; transform: translateY(-2px); }
+        .btn-send:disabled { background: var(--text-muted); cursor: not-allowed; transform: none; }
+
+        .auth-switch {
+            text-align: center;
+            padding: 1.5rem 2.5rem 2.5rem;
+            border-top: 1px solid var(--border-subtle);
+            margin-top: auto;
+        }
+
+        .auth-switch p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .auth-switch a {
+            color: var(--accent-warm);
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .auth-switch a:hover {
+            color: var(--text-primary);
+            text-decoration: underline;
+        }
+
+        /* ==================== VIEW MODAL ==================== */
+        /* Stack card and reactions vertically */
+        #view-modal {
+            flex-direction: column;
+        }
+
+        #view-modal .modal-card {
+            height: 550px; 
+            margin-bottom: 0; /* Remove default margin if needed */
+        }
+
+        .view-content-wrapper {
+            position: absolute; inset: 0; z-index: 1;
+            display: flex; flex-direction: column;
+            justify-content: space-between;
+            padding: 2rem 1.5rem;
+            pointer-events: none;
+            text-align: center;
+        }
+
+        .tiktok-media-player {
+            position: absolute; inset: 0; z-index: 0;
+            background: #000; overflow: hidden; display: none;
+        }
+        .has-tiktok .tiktok-media-player { display: block; }
+
+        .tiktok-media-player video {
+            width: 100%; height: 100%; object-fit: cover;
+            position: absolute; top: 0; left: 0;
+            filter: brightness(0.5) contrast(1.1);
+        }
+
+        .video-overlay {
+            position: absolute; inset: 0; z-index: 1;
+            background: linear-gradient(to bottom, 
+                rgba(0,0,0,0.7) 0%,
+                transparent 30%, 
+                transparent 60%, 
+                rgba(0,0,0,0.8) 100%);
+            pointer-events: none; display: none;
+        }
+        .has-tiktok .video-overlay { display: block; }
+
+        .view-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+            z-index: 2;
+            pointer-events: auto;
+        }
+
+        .view-type-col { text-align: left; }
+        .view-type {
+            font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em;
+            font-weight: 700; opacity: 0.9;
+            color: white; 
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            transition: color 0.3s ease;
+        }
+
+        .view-meta-col {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+        .view-fade {
+            font-size: 0.7rem; font-style: italic;
+            opacity: 0.8; margin-bottom: 0.2rem;
+            color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+        .view-preserve {
+            background: transparent; border: none;
+            font-size: 0.65rem; cursor: pointer;
+            color: rgba(255,255,255,0.7); text-decoration: underline;
+            transition: color 0.2s;
+            padding: 0; font-family: 'Lora', serif;
+        }
+        .view-preserve:hover { color: white; }
+
+        .view-center-col {
+            flex-grow: 1; 
+            display: flex; 
+            flex-direction: column; /* Stack text and reactions */
+            align-items: center; 
+            justify-content: center; /* Centers content vertically */
+            width: 100%; 
+            z-index: 2;
+            min-height: 0; 
+            overflow: hidden; 
+            position: relative;
+        }
+        
+        .view-message {
+            font-size: 1.4rem; line-height: 1.6;
+            font-family: 'Cormorant Garamond', serif; font-weight: 500;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8); 
+            max-width: 90%;
+            color: white;
+            text-align: center;
+
+            /* FIX: Limit height and allow scrolling */
+            max-height: 45vh; /* Takes up max 45% of screen height */
+            overflow-y: auto;
+            padding-right: 5px; /* Small padding so text doesn't touch edge */
+        }
+
+        /* Make the scrollbar subtle inside the message */
+        .view-message::-webkit-scrollbar {
+            width: 4px;
+        }
+        .view-message::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+        .view-message::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+        
+        /* Reaction Styles - External Dock */
+        .reactions-external-dock {
+            display: flex;
+            justify-content: center;
+            gap: 0.8rem;
+            padding: 1rem 2rem;
+            background: rgba(253, 251, 247, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 50px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            margin-top: 1.5rem;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s; /* Delay to sync with modal */
+            z-index: 10;
+            border: 1px solid var(--border-subtle);
+        }
+
+        [data-theme="dark"] .reactions-external-dock {
+            background: rgba(26, 25, 23, 0.85);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #view-modal.active .reactions-external-dock {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .reaction-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 50px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            font-family: 'Lora', serif;
+            font-size: 1rem;
+        }
+
+        .reaction-btn:hover {
+            background: var(--accent-warm);
+            border-color: var(--accent-warm);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(212, 137, 106, 0.2);
+        }
+
+        .reaction-emoji { font-size: 1.1rem; line-height: 1; }
+        .reaction-count { font-size: 0.85rem; font-weight: 600; }
+        /* =============================================== */
+
+        .view-footer-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            width: 100%;
+            z-index: 2;
+            pointer-events: auto;
+            position: relative;
+        }
+
+        .view-timestamp-col { text-align: left; display: flex; flex-direction: column; gap: 0.1rem; }
+        
+        .view-username {
+            font-family: 'Lora', serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .view-time {
+            font-size: 0.7rem; font-style: italic; display: block;
+            opacity: 0.7;
+            color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .view-action-col { text-align: right; position: relative; }
+        .view-share-btn {
+            background: transparent; border: none;
+            font-size: 0.75rem; cursor: pointer;
+            color: rgba(255,255,255,0.8); text-decoration: underline;
+            transition: color 0.2s;
+            padding: 0; font-family: 'Lora', serif;
+            display: inline-flex; align-items: center; gap: 0.3rem;
+        }
+        .view-share-btn:hover { color: white; }
+        .view-share-btn svg {
+            width: 14px; height: 14px; fill: currentColor;
+        }
+
+        .view-standard {
+            position: absolute; inset: 0; z-index: 10;
+            background: var(--bg-secondary);
+            display: flex; flex-direction: column;
+        }
+        .has-tiktok .view-standard { display: none; }
+
+        .view-standard .view-message { color: var(--text-primary); text-shadow: none; }
+        .view-standard .view-username { color: var(--text-primary); text-shadow: none; }
+        .view-standard .view-time { color: var(--text-muted); text-shadow: none; }
+        .view-standard .view-fade { color: var(--text-secondary); text-shadow: none; }
+        .view-standard .view-preserve { color: var(--accent-warm); }
+        .view-standard .view-preserve:hover { color: var(--text-primary); }
+        .view-standard .view-share-btn { 
+            color: var(--text-secondary); 
+            font-weight: 600;
+        }
+        .view-standard .view-share-btn:hover { color: var(--accent-warm); }
+
+        /* ==================== SHARE DRAWER ==================== */
+        .share-drawer {
+            position: absolute;
+            bottom: 100%; right: 0;
+            margin-bottom: 10px;
+            background: rgba(20, 20, 20, 0.95);
+            backdrop-filter: blur(12px);
+            border-radius: 12px;
+            padding: 8px;
+            display: flex;
+            gap: 4px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            transform: translateY(10px);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.2s ease;
+            z-index: 100;
+        }
+        
+        .share-drawer.active {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .share-icon-btn {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+            color: white;
+        }
+        .share-icon-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .share-icon-btn svg {
+            width: 18px; height: 18px;
+            fill: white;
+        }
+        .share-icon-btn.copy-link-btn { background: rgba(255,255,255,0.2); }
+        .share-icon-btn.copy-link-btn.copied { background: #38a169; }
+
+        /* ==================== EXTERNAL CLOSE BUTTON ==================== */
+        .modal-close-external {
+            position: absolute;
+            top: 1.5rem; right: 1.5rem;
+            width: 40px; height: 40px;
+            background: rgba(253, 251, 247, 0.9);
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 2000;
+            transition: transform 0.2s, background 0.2s;
+        }
+        [data-theme="dark"] .modal-close-external {
+             background: rgba(26, 25, 23, 0.9);
+             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        
+        .modal-close-external:hover {
+            transform: rotate(90deg);
+            background: var(--accent-warm);
+        }
+        .modal-close-external svg {
+            width: 16px; height: 16px;
+            fill: var(--text-primary);
+            pointer-events: none;
+        }
+        .modal-close-external:hover svg { fill: white; }
+
+        /* ==================== WHITEPAPER MODAL ==================== */
+        #whitepaper-modal {
+            z-index: 2000;
+        }
+        
+        #whitepaper-modal .modal-card {
+            max-width: 600px;
+            height: 85vh;
+        }
+
+        .whitepaper-container {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .whitepaper-header {
+            padding: 2rem 2rem 1.5rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+
+        .whitepaper-header h2 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 2rem;
+            font-weight: 300;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .whitepaper-header p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .whitepaper-nav {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            background: var(--bg-tertiary);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        .whitepaper-tab {
+            background: transparent;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            padding: 0.6rem 1.5rem;
+            border-radius: 50px;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.95rem;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .whitepaper-tab:hover {
+            border-color: var(--accent-warm);
+            color: var(--accent-warm);
+        }
+
+        .whitepaper-tab.active {
+            background: var(--accent-warm);
+            color: white;
+            border-color: var(--accent-warm);
+        }
+
+        .whitepaper-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+        }
+
+        .whitepaper-section {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .whitepaper-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Ledger Section */
+        .ledger-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-tertiary);
+            border-radius: 16px;
+            padding: 1.2rem;
+            text-align: center;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .stat-value {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 2rem;
+            font-weight: 300;
+            color: var(--accent-warm);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-top: 0.3rem;
+        }
+
+        .ledger-entries {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .ledger-entry {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.2rem;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            border: 1px solid var(--border-subtle);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .ledger-entry:hover {
+            border-color: var(--accent-warm);
+            transform: translateX(5px);
+        }
+
+        .entry-type-badge {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .entry-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .entry-text {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .entry-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.2rem;
+        }
+
+        .entry-location {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .entry-location svg {
+            width: 12px;
+            height: 12px;
+            fill: currentColor;
+        }
+
+        /* Message Type Legend */
+        .type-legend {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .type-legend h4 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.1rem;
+            letter-spacing: 0.1em;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+        }
+
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.6rem 0.8rem;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .legend-name {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            fill: var(--border-subtle);
+            margin-bottom: 1rem;
+        }
+
+        /* Instructions Section */
+        .instruction-block {
+            margin-bottom: 2rem;
+        }
+
+        .instruction-block h4 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.3rem;
+            letter-spacing: 0.1em;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .instruction-block h4::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: var(--accent-warm);
+            border-radius: 2px;
+        }
+
+        .instruction-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .instruction-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            border: 1px solid var(--border-subtle);
+            transition: all 0.3s ease;
+        }
+
+        .instruction-list li:hover {
+            border-color: var(--accent-warm);
+        }
+
+        .step-number {
+            width: 28px;
+            height: 28px;
+            background: var(--accent-warm);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.95rem;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.3rem;
+        }
+
+        .step-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* Guide Section */
+        .guide-card {
+            background: var(--bg-tertiary);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .guide-card h4 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.2rem;
+            letter-spacing: 0.08em;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .guide-card h4 svg {
+            width: 20px;
+            height: 20px;
+            fill: var(--accent-warm);
+        }
+
+        .guide-card p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        .guide-tip {
+            background: linear-gradient(135deg, rgba(212, 137, 106, 0.1), rgba(232, 168, 124, 0.05));
+            border-left: 3px solid var(--accent-warm);
+            padding: 1rem 1.2rem;
+            margin-top: 1rem;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .guide-tip strong {
+            color: var(--accent-warm);
+            display: block;
+            margin-bottom: 0.3rem;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .guide-tip span {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        /* Message Type Cards */
+        .message-type-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .message-type-card {
+            background: var(--bg-primary);
+            border-radius: 16px;
+            padding: 1.2rem;
+            border: 1px solid var(--border-subtle);
+            transition: all 0.3s ease;
+        }
+
+        .message-type-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        }
+
+        .message-type-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .message-type-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .message-type-name {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1rem;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-primary);
+        }
+
+        .message-type-desc {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-style: italic;
+            line-height: 1.5;
+        }
+
+        /* --- PASTE THE PHILOSOPHY CSS HERE --- */
+        .philosophy-block {
+            position: relative;
+            text-align: center;
+            padding: 3rem 2rem;
+            margin-top: 2.5rem;
+            background: linear-gradient(135deg, var(--bg-tertiary), var(--bg-secondary));
+            border-radius: 24px;
+            border: 1px solid var(--border-subtle);
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+        }
+
+        .philosophy-block::before {
+            content: '"';
+            position: absolute;
+            top: -20px;
+            left: 10px;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 10rem;
+            color: var(--accent-warm);
+            opacity: 0.08;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        .philosophy-block blockquote {
+            position: relative;
+            z-index: 1;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.6rem;
+            font-style: italic;
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .philosophy-block cite {
+            position: relative;
+            z-index: 1;
+            display: block;
+            font-family: 'Lora', serif;
+            font-size: 0.9rem;
+            font-style: normal;
+            color: var(--text-muted);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+        /* --- END OF PHILOSOPHY CSS --- */
+
+        /* Scrollbar Styling */
+        .whitepaper-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .whitepaper-content::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+        }
+
+        .whitepaper-content::-webkit-scrollbar-thumb {
+            background: var(--accent-warm);
+            border-radius: 3px;
+        }
+
+        /* Aesthetic Scrollbar for Modal Cards (Matches Whitepaper) */
+        .modal-card::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .modal-card::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+        }
+
+        .modal-card::-webkit-scrollbar-thumb {
+            background: var(--accent-warm);
+            border-radius: 3px;
+        }
+        
+        /* Firefox Support for Modal Scrollbar */
+        .modal-card {
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-warm) var(--bg-tertiary);
+        }
+
+        /* Auth Error Message */
+        .auth-error {
+            background: rgba(229, 62, 62, 0.1);
+            border: 1px solid rgba(229, 62, 62, 0.3);
+            color: #E53E3E;
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin: 0 2.5rem 1rem;
+            display: none;
+        }
+
+        .auth-error.show {
+            display: block;
+        }
+        
+        /* Share Loading Overlay */
+        .share-loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 5000;
+            color: white;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .share-loading-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .share-loading-overlay .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: var(--accent-warm);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1.5rem;
+        }
+        
+        .share-loading-overlay p {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.2rem;
+            letter-spacing: 0.1em;
+        }
+        
+        /* Hidden Canvas for Image Generation */
+        #shareCanvas {
+            position: fixed;
+            left: -9999px;
+            top: -9999px;
+            pointer-events: none;
+        }
+
+        /* ==================== NOTIFICATION BELL ==================== */
+        .notification-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .notification-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            color: var(--text-secondary);
+            position: relative;
+        }
+
+        .notification-btn:hover {
+            background: var(--text-primary);
+            color: var(--bg-primary);
+            border-color: var(--text-primary);
+        }
+
+        .notification-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+            transition: transform 0.3s ease;
+        }
+        
+        .notification-btn:hover svg {
+            transform: rotate(15deg);
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: 0px;
+            right: 0px;
+            width: 20px;
+            height: 20px;
+            background: #E53E3E;
+            color: white;
+            border-radius: 50%;
+            font-size: 0.7rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--bg-primary);
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .notification-badge.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .notification-panel {
+            position: absolute;
+            top: 60px;
+            right: 0;
+            width: 340px;
+            max-height: 450px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+            z-index: 1100;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px) scale(0.95);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        [data-theme="dark"] .notification-panel {
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+        }
+
+        .notification-panel.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+        }
+
+        .notification-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .notification-header h3 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.2rem;
+            letter-spacing: 0.1em;
+            color: var(--text-primary);
+        }
+
+        .mark-read-btn {
+            background: transparent;
+            border: none;
+            color: var(--accent-warm);
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-family: 'Lora', serif;
+        }
+
+        .mark-read-btn:hover {
+            text-decoration: underline;
+        }
+
+        .notification-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem 0;
+        }
+
+        .notification-item {
+            padding: 1rem 1.25rem;
+            display: flex;
+            gap: 0.8rem;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--border-subtle);
+            transition: background 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .notification-item:last-child {
+            border-bottom: none;
+        }
+
+        .notification-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .notification-item.unread {
+            background: rgba(212, 137, 106, 0.05);
+        }
+
+        .notification-item.unread::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--accent-warm);
+        }
+
+        .notification-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: var(--accent-warm);
+            font-size: 1.1rem;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-text {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        .notification-text strong {
+            color: var(--accent-warm);
+            font-weight: 600;
+        }
+
+        .notification-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.3rem;
+            font-style: italic;
+        }
+
+        .notification-empty {
+            padding: 3rem 1rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .notification-empty svg {
+            width: 40px;
+            height: 40px;
+            fill: var(--border-subtle);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Fading Memory Warning Style */
+        .notification-item.fading {
+            background: rgba(229, 62, 62, 0.05);
+        }
+        .notification-item.fading .notification-icon {
+            background: rgba(229, 62, 62, 0.1);
+            color: #E53E3E;
+        }
+
+        @media (max-width: 600px) {
+            main { padding: 2rem 1.5rem; }
+            
+            /* MODAL FIX FOR MOBILE */
+            .modal-card { 
+                max-height: 82vh; /* Optimized for mobile screens */
+                border-radius: 20px; 
+            }
+            
+            /* Reduce spacing inside modals */
+            .modal-title { padding: 2rem 1.5rem 0 1.5rem; font-size: 1.6rem; }
+            .modal-subtitle { padding: 0.5rem 1.5rem; }
+            .form-group { padding: 0 1.5rem; margin-bottom: 1.2rem; }
+            .tiktok-section { padding: 0 1.5rem; }
+            .modal-actions { padding: 0 1.5rem 1.5rem; }
+            .message-input { min-height: 100px; }
+            
+            /* Auth Error Mobile */
+            .auth-error { margin: 0 1.5rem 1rem; }
+
+            /* View Modal & Reactions Mobile Optimization */
+            .view-message { font-size: 1.1rem; max-height: 35vh; } /* Smaller text box */
+            
+            #view-modal .modal-card {
+                max-height: 62vh; /* FIX: Tighter fit so dock is visible */
+            }
+            
+            .reactions-external-dock {
+                padding: 0.5rem;
+                gap: 0.4rem;
+                margin-top: 0.5rem;
+                width: 100%;
+                border-radius: 0 0 20px 20px; /* Merge with bottom of screen */
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: var(--bg-secondary);
+                border: none;
+                border-top: 1px solid var(--border-subtle);
+                box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+            }
+
+            [data-theme="dark"] .reactions-external-dock {
+                background: var(--bg-secondary);
+            }
+
+            .reaction-btn {
+                padding: 0.4rem 0.6rem;
+                font-size: 0.85rem;
+                flex: 1; /* Spread evenly */
+            }
+            
+            .reaction-emoji { font-size: 0.9rem; }
+            .reaction-count { font-size: 0.7rem; }
+
+            /* Map Controls Mobile */
+            .whitepaper-fab { bottom: 1.5rem; right: 1.5rem; width: 50px; height: 50px; }
+            .suggestion-fab { bottom: 1.5rem; right: 5.5rem; width: 46px; height: 46px; }
+            
+            .top-controls { 
+                top: 1rem; 
+                right: 1rem; 
+                gap: 0.5rem; 
+                width: calc(100% - 2rem); 
+                justify-content: flex-end; /* Push items to right */
+            }
+            
+            .user-greeting { display: none; } /* Hide text to save space */
+            
+            .btn-auth { 
+                padding: 0.5rem 0.8rem; 
+                font-size: 0.8rem; 
+            }
+
+            /* Notification Bell Mobile */
+            .notification-btn { width: 42px; height: 42px; }
+            
+            .notification-panel {
+                width: calc(100vw - 2rem); /* Full width almost */
+                right: -0.5rem; /* Align closer to edge */
+                top: 55px;
+                max-height: 60vh;
+            }
+
+            /* Map Header Mobile */
+            .map-header { top: 1.5rem; left: 1rem; z-index: 1000; }
+            .map-header h2 { font-size: 1.4rem; }
+            .map-header p { font-size: 0.8rem; }
+
+            .map-close { top: 1rem; right: 1rem; width: 40px; height: 40px; font-size: 1.5rem; }
+
+            /* Filter Controls Mobile - Move down to avoid overlap */
+            .map-filter-container {
+                top: 7.5rem; /* FIX: Moved down below header/close */
+                width: calc(100% - 2rem);
+                padding: 0.4rem 0.8rem;
+            }
+
+            .filter-dropdown { font-size: 0.9rem; }
+
+            /* General Grid Fixes */
+            .ledger-stats { grid-template-columns: 1fr; }
+            .legend-grid { grid-template-columns: repeat(2, 1fr); }
+            .whitepaper-nav { flex-wrap: wrap; gap: 0.3rem; padding: 0.8rem 1rem; }
+            .whitepaper-tab { padding: 0.5rem 1rem; font-size: 0.85rem; }
+            .message-type-grid { grid-template-columns: 1fr; }
+        }
+            
+        /* ==================== COMMENTS DRAWER ==================== */
+        /* Default Hidden State */
+        .comments-container {
+            position: fixed;
+            bottom: 70px; /* Sits above the reactions dock */
+            left: 50%;
+            transform: translateX(-50%) translateY(100%); /* Hidden below screen */
+            opacity: 0;
+            pointer-events: none;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+            z-index: 20; /* Above reactions dock (z-10) */
+            width: 90%;
+            max-width: 400px;
+            max-height: 50vh; /* Takes up max 50% of screen */
+            border-radius: 20px 20px 0 0;
+            border-bottom: none;
+            box-shadow: 0 -5px 30px rgba(0,0,0,0.2);
+            
+            /* Internal Structure */
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border-subtle);
+        }
+
+        [data-theme="dark"] .comments-container {
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        /* Open State */
+        .comments-container.drawer-open {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .comments-header {
+            padding: 1rem 1.5rem 0.5rem;
+            border-bottom: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+
+        .comments-header h4 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.1rem;
+            letter-spacing: 0.1em;
+            color: var(--text-primary);
+            text-transform: uppercase;
+        }
+
+        .comments-header span {
+            color: var(--text-muted);
+            font-family: 'Lora', serif;
+            font-size: 0.9rem;
+            text-transform: none;
+        }
+
+        .comments-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.1rem;
+        }
+
+        .comment-item {
+            padding: 0.8rem 1.5rem;
+            transition: background 0.2s;
+        }
+
+        .comment-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.3rem;
+        }
+
+        .comment-username {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+
+        .comment-time {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .comment-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .comment-empty {
+            padding: 2rem 1rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-style: italic;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .comment-empty svg {
+            width: 32px;
+            height: 32px;
+            fill: var(--border-subtle);
+        }
+
+        .comment-input-area {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+
+        .comment-input-area input {
+            flex: 1;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 50px;
+            padding: 0.6rem 1rem;
+            color: var(--text-primary);
+            font-family: 'Lora', serif;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .comment-input-area input:focus {
+            border-color: var(--accent-warm);
+        }
+
+        .btn-send-comment {
+            width: 40px;
+            height: 40px;
+            background: var(--accent-warm);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .btn-send-comment:hover {
+            background: #B86A4C;
+            transform: scale(1.05);
+        }
+
+        .btn-send-comment svg {
+            width: 18px;
+            height: 18px;
+            fill: white;
+            margin-left: 2px; /* Visual centering */
+        }
+
+        /* Mobile Adjustments for Drawer */
+        @media (max-width: 600px) {
+            .comments-container {
+                bottom: 60px; /* Adjust for mobile dock height */
+                width: 100%;
+                max-width: 100%;
+                border-radius: 20px 20px 0 0;
+                max-height: 40vh;
+            }
+        }
+        
+        /* ==================== AUDIO TOGGLE ==================== */
+        .audio-toggle {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            color: var(--text-secondary);
+            position: relative;
+            overflow: hidden;
+        }
+        .audio-toggle:hover { background: var(--accent-warm); color: white; border-color: var(--accent-warm); }
+        .audio-toggle svg { width: 20px; height: 20px; fill: currentColor; transition: transform 0.3s; }
+        .audio-toggle:hover svg { transform: scale(1.1); }
+        
+        /* Icon Switching */
+        .icon-sound-off { display: block; }
+        .icon-sound-on { display: none; }
+        .audio-toggle.playing .icon-sound-off { display: none; }
+        .audio-toggle.playing .icon-sound-on { display: block; }
+
+        /* Sound Wave Animation */
+        .audio-toggle.playing::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle, transparent 30%, var(--accent-warm) 100%);
+            opacity: 0.2;
+            animation: pulseGlow 2s infinite;
+        }
+        @keyframes pulseGlow { 0% { transform: scale(1); opacity: 0.2; } 50% { transform: scale(1.1); opacity: 0.4; } 100% { transform: scale(1); opacity: 0.2; } }
+
+        /* ==================== LOST BUTTON ==================== */
+        .btn-lost {
+            background: rgba(253, 251, 247, 0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-subtle);
+            padding: 0.6rem 1.2rem;
+            border-radius: 50px;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 0.95rem;
+            letter-spacing: 0.05em;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            margin-top: 0.8rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            pointer-events: auto; /* Ensure clickable */
+        }
+        [data-theme="dark"] .btn-lost {
+            background: rgba(18, 17, 15, 0.8);
+            color: var(--text-primary);
+        }
+        .btn-lost:hover {
+            background: var(--accent-warm);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(212, 137, 106, 0.3);
+        }
+        .btn-lost svg { width: 18px; height: 18px; fill: currentColor; }
+
+        /* ==================== CUSTOM DROPDOWN (Ghost Trails) ==================== */
+        .custom-dropdown {
+            position: relative;
+            z-index: 1001;
+        }
+        
+        .dropdown-selected {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(253, 251, 247, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(44, 40, 36, 0.08);
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        }
+        [data-theme="dark"] .dropdown-selected {
+            background: rgba(18, 17, 15, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .dropdown-selected:hover { border-color: var(--accent-warm); }
+        
+        .dropdown-selected span {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.05rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        
+        .dropdown-arrow { width: 16px; height: 16px; fill: var(--accent-warm); transition: transform 0.3s; }
+        .custom-dropdown.open .dropdown-arrow { transform: rotate(180deg); }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 0.5rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 0.5rem;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        [data-theme="dark"] .dropdown-menu { background: var(--bg-tertiary); }
+        
+        .custom-dropdown.open .dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .dropdown-option {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Lora', serif;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        
+        .dropdown-option:hover {
+            background: rgba(212, 137, 106, 0.1);
+            color: var(--accent-warm);
+        }
+        
+        .dropdown-option.active {
+            background: var(--accent-warm);
+            color: white;
+            font-weight: 600;
+        }
+
+        /* Mobile fixes */
+        @media (max-width: 600px) {
+            .audio-toggle { width: 42px; height: 42px; }
+            .map-header { display: flex; flex-direction: column; align-items: flex-start; }
+            .btn-lost { margin-top: 0.5rem; padding: 0.5rem 1rem; font-size: 0.85rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-base"></div>
+    <div class="vignette"></div>
+    <div class="grain-overlay"></div>
+    
+    <canvas id="embers-canvas"></canvas>
+    
+    <div class="fire-glow"></div>
+    
+    <!-- Share Loading Overlay -->
+    <div class="share-loading-overlay" id="shareLoadingOverlay">
+        <div class="spinner"></div>
+        <p>Preparing your memory...</p>
+    </div>
+
+    <!-- Success Toast -->
+    <div class="success-toast" id="successToast">
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        <span>Memory released to the wind</span>
+    </div>
+
+    <!-- Top Right Controls -->
+    <div class="top-controls">
+        <div class="user-area" id="userArea">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- NEW: Notification Bell -->
+        <div class="notification-wrapper" id="notificationWrapper" style="display: none;">
+            <button class="notification-btn" id="notificationBtn">
+                <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                <span class="notification-badge" id="notificationBadge">0</span>
+            </button>
+            <div class="notification-panel" id="notificationPanel">
+                <div class="notification-header">
+                    <h3>Updates</h3>
+                    <button class="mark-read-btn" id="markAllRead">Mark all read</button>
+                </div>
+                <div class="notification-list" id="notificationList">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Audio Toggle Button (Added Here) -->
+        <button class="audio-toggle" id="audioToggle" aria-label="Toggle ambient sound">
+            <svg class="icon-sound-on" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+            <svg class="icon-sound-off" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+            </svg>
+        </button>
+        
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+            <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/>
+            </svg>
+            <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 000-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Whitepaper FAB -->
+    <button class="whitepaper-fab" id="whitepaperFab" aria-label="Open Whitepaper">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+    </button>
+    
+    <!-- Suggestion FAB -->
+    <button class="suggestion-fab" id="suggestionFab" aria-label="Send Suggestion">
+        <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/><path d="M7 9h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z"/></svg>
+    </button>
+
+    <main id="mainContent">
+        <h1>Gunita</h1>
+        <p class="tagline">"A place where memories live...<br>and the words we couldn't give."</p>
+        
+        <div class="description">
+            <p>Gunita is a <span class="highlight">quiet space</span> for the words that stayed in your chest and the <span class="highlight">memories</span> that never truly faded. It is where <span class="highlight">untold stories</span> rest, where <span class="highlight">love, regret, and longing</span> are given a gentle place to exist. Not everything is meant to be sent — some things are meant to be <span class="highlight">remembered</span>.</p>
+        </div>
+        
+        <div class="cta-container">
+            <button class="btn-enter" id="enterBtn">Write what lingers</button>
+            <span class="subtle-text">Sign in required to leave your memory on the map.</span>
+        </div>
+    </main>
+
+    <!-- MAP OVERLAY -->
+    <div id="map-overlay">
+        <div class="map-header">
+            <h2>Gunita</h2>
+            <p>Click anywhere to leave a memory</p>
+            <!-- Lost Button (Added Here) -->
+            <button class="btn-lost" id="lostBtn">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 13v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                <span>I'm Feeling Lost</span>
+            </button>
+        </div>
+        
+        <!-- Filter Control (Custom Dropdown Added Here) -->
+        <div class="custom-dropdown" id="filterDropdown">
+            <div class="dropdown-selected" id="dropdownSelected">
+                <svg class="filter-icon" viewBox="0 0 24 24"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+                <span>All Whispers</span>
+                <svg class="dropdown-arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+            </div>
+            <div class="dropdown-menu" id="dropdownMenu">
+                <div class="dropdown-option active" data-value="all">All Whispers</div>
+                <div class="dropdown-option" data-value="Echoes">Echoes</div>
+                <div class="dropdown-option" data-value="Longing">Longing</div>
+                <div class="dropdown-option" data-value="Regret">Regret</div>
+                <div class="dropdown-option" data-value="Hope">Hope</div>
+                <div class="dropdown-option" data-value="Gratitude">Gratitude</div>
+                <div class="dropdown-option" data-value="Farewell">Farewell</div>
+                <div class="dropdown-option" data-value="Joy">Joy</div>
+                <div class="dropdown-option" data-value="Nostalgia">Nostalgia</div>
+            </div>
+        </div>
+
+        <!-- Notification Toast -->
+        <div class="notification-toast" id="notificationToast">
+            <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
+            <span>A new whisper drifts in the wind...</span>
+        </div>
+        
+        <button class="map-close" id="mapClose">&times;</button>
+        
+        <div class="loading-indicator" id="loadingIndicator">
+            <div class="spinner"></div>
+            <span>Connecting to memories...</span>
+        </div>
+
+        <div id="map-tiles" style="width: 100%; height: 100%;"></div>
+    </div>
+
+    <!-- LOGIN MODAL -->
+    <div id="login-modal" class="modal-overlay">
+        <div class="modal-card" style="height: auto;">
+            <button class="modal-close-external" id="closeLogin">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+            
+            <h3 class="modal-title">Return to Memory</h3>
+            <p class="modal-subtitle">Welcome back, weary traveler.</p>
+            
+            <div class="auth-error" id="loginError"></div>
+            
+            <div class="form-group" style="margin-top: 1rem;">
+                <label class="form-label">Your Lantern (Email)</label>
+                <input type="email" class="auth-input" id="loginEmail" placeholder="Where we find you...">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">The Key (Password)</label>
+                <input type="password" class="auth-input" id="loginPassword" placeholder="Your secret words...">
+            </div>
+            
+            <div class="modal-actions" style="justify-content: center;">
+                <button class="btn-send" id="loginBtn" style="width: 100%;">Enter</button>
+            </div>
+            
+            <div class="auth-switch">
+                <p>New here? <a id="switchToSignup">Leave your mark.</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIGNUP MODAL -->
+    <div id="signup-modal" class="modal-overlay">
+        <div class="modal-card" style="height: auto;">
+            <button class="modal-close-external" id="closeSignup">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+            
+            <h3 class="modal-title">Begin Your Story</h3>
+            <p class="modal-subtitle">Become a keeper of memories.</p>
+            
+            <div class="auth-error" id="signupError"></div>
+            
+            <div class="form-group" style="margin-top: 1rem;">
+                <label class="form-label">How we remember you (Username)</label>
+                <input type="text" class="auth-input" id="signupUsername" placeholder="Your name in the wind...">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Your Lantern (Email)</label>
+                <input type="email" class="auth-input" id="signupEmail" placeholder="Where we find you...">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">The Key (Password)</label>
+                <input type="password" class="auth-input" id="signupPassword" placeholder="Keep it safe, at least 6 characters...">
+            </div>
+            
+            <div class="modal-actions" style="justify-content: center;">
+                <button class="btn-send" id="signupBtn" style="width: 100%;">Become a Keeper</button>
+            </div>
+            
+            <div class="auth-switch">
+                <p>Already have memories? <a id="switchToLogin">Return.</a></p>
+            </div>
+        </div>
+    </div>
+    
+        <!-- WHITEPAPER MODAL -->
+    <div id="whitepaper-modal" class="modal-overlay">
+        <div class="modal-card">
+            <button class="modal-close-external" id="closeWhitepaper">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+            
+            <div class="whitepaper-container">
+                <div class="whitepaper-header">
+                    <h2>The Whitepaper</h2>
+                    <p>Understanding the architecture of memories</p>
+                </div>
+                
+                <div class="whitepaper-nav">
+                    <button class="whitepaper-tab active" data-section="ledger">Ledger</button>
+                    <button class="whitepaper-tab" data-section="instructions">Instructions</button>
+                    <button class="whitepaper-tab" data-section="guides">Guides</button>
+                    <button class="whitepaper-tab" data-section="about">About</button>
+                    <button class="whitepaper-tab" data-section="reflections">Reflections</button>
+                </div>
+                
+                <div class="whitepaper-content">
+                    <!-- LEDGER SECTION -->
+                    <div id="section-ledger" class="whitepaper-section active">
+                        <div class="ledger-stats">
+                            <div class="stat-card">
+                                <div class="stat-value" id="totalMemories">0</div>
+                                <div class="stat-label">Total Memories</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="activeToday">0</div>
+                                <div class="stat-label">Today</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="keepersCount">12</div>
+                                <div class="stat-label">Keepers</div>
+                            </div>
+                        </div>
+                        
+                        <h4 style="font-family: 'Cormorant Garamond', serif; letter-spacing: 0.1em; color: var(--text-primary); margin-bottom: 1rem;">Recent Entries</h4>
+                        <div class="ledger-entries" id="ledgerEntries"></div>
+                        
+                        <div class="type-legend">
+                            <h4>Message Types</h4>
+                            <div class="legend-grid" id="typeLegend"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- INSTRUCTIONS SECTION -->
+                    <div id="section-instructions" class="whitepaper-section">
+                        <div class="instruction-block">
+                            <h4>Leaving a Memory</h4>
+                            <ul class="instruction-list">
+                                <li>
+                                    <span class="step-number">1</span>
+                                    <div class="step-content">
+                                        <div class="step-title">Sign In</div>
+                                        <div class="step-desc">Create an account or sign in to become a memory keeper. Your identity remains protected.</div>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-number">2</span>
+                                    <div class="step-content">
+                                        <div class="step-title">Enter the Map</div>
+                                        <div class="step-desc">Open the memory map — the sacred space where all memories are placed.</div>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-number">3</span>
+                                    <div class="step-content">
+                                        <div class="step-title">Choose Your Location</div>
+                                        <div class="step-desc">Click anywhere on the map to place your memory. The location becomes part of its home.</div>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-number">4</span>
+                                    <div class="step-content">
+                                        <div class="step-title">Write & Release</div>
+                                        <div class="step-desc">Pour your heart into words, then send it to the wind. It will live on the map for 14 days.</div>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- GUIDES SECTION -->
+                    <div id="section-guides" class="whitepaper-section">
+                        <div class="guide-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                                The Language of Memory Types
+                            </h4>
+                            <p>Each memory type carries its own color and energy.</p>
+                        </div>
+                        
+                        <div class="message-type-grid">
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #A0AEC0;"></div>
+                                    <span class="message-type-name">Echoes</span>
+                                </div>
+                                <p class="message-type-desc">Words that resonate from the past.</p>
+                            </div>
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #D53F8C;"></div>
+                                    <span class="message-type-name">Longing</span>
+                                </div>
+                                <p class="message-type-desc">The gentle ache for someone or something beyond reach.</p>
+                            </div>
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #718096;"></div>
+                                    <span class="message-type-name">Regret</span>
+                                </div>
+                                <p class="message-type-desc">The heavy silence of words left unsaid.</p>
+                            </div>
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #D69E2E;"></div>
+                                    <span class="message-type-name">Hope</span>
+                                </div>
+                                <p class="message-type-desc">A fragile light held close in darkness.</p>
+                            </div>
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #38A169;"></div>
+                                    <span class="message-type-name">Gratitude</span>
+                                </div>
+                                <p class="message-type-desc">A quiet thank you for moments that shaped you.</p>
+                            </div>
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #805AD5;"></div>
+                                    <span class="message-type-name">Farewell</span>
+                                </div>
+                                <p class="message-type-desc">The bittersweet release of letting go.</p>
+                            </div>
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #DD6B20;"></div>
+                                    <span class="message-type-name">Joy</span>
+                                </div>
+                                <p class="message-type-desc">Sparkles of laughter and warmth treasured forever.</p>
+                            </div>
+                            <div class="message-type-card">
+                                <div class="message-type-header">
+                                    <div class="message-type-dot" style="background-color: #C4A98E;"></div>
+                                    <span class="message-type-name">Nostalgia</span>
+                                </div>
+                                <p class="message-type-desc">Walking through the rooms of yesterday.</p>
+                            </div>
+                        </div>
+
+                        <div class="philosophy-block">
+                            <blockquote>"Not everything is meant to be sent. Some things are meant to be remembered."</blockquote>
+                            <cite>— The Philosophy of Gunita</cite>
+                        </div>
+                    </div>
+
+                    <!-- ABOUT SECTION -->
+                    <div id="section-about" class="whitepaper-section">
+                        <div class="guide-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                                About Gunita
+                            </h4>
+                            <p>Gunita is a digital sanctuary for the words we couldn't say and the memories we dare not forget. It is a place where silence finds a voice, and where the echoes of our past are given a gentle space to exist. We believe that not everything is meant to be sent — some things are meant to be remembered.</p>
+                        </div>
+
+                        <div class="guide-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+                                Our Mission
+                            </h4>
+                            <p>To create a safe, ephemeral space where individuals can release their unspoken thoughts, unburden their hearts, and find solace in the shared human experience of longing and remembrance. We provide a canvas for the soul to paint its deepest hues.</p>
+                        </div>
+
+                        <div class="guide-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                                Our Vision
+                            </h4>
+                            <p>A world where no emotion is lost to the void, where every whispered memory finds a home, and where the act of letting go becomes a beautiful ritual of healing. We envision a community that treasures the fragility of human connection.</p>
+                        </div>
+
+                        <div class="guide-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                                Our Goal
+                            </h4>
+                            <p>To build a compassionate community of keepers who value the sanctity of memories. We aim to support each other through the simple act of witnessing and preserving stories, ensuring that every whisper finds a listening ear.</p>
+                        </div>
+                    </div>
+
+                    <!-- REFLECTIONS SECTION -->
+                    <div id="section-reflections" class="whitepaper-section">
+                        <div class="guide-card">
+                            <h4>
+                                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z"/></svg>
+                                Your Reflections
+                            </h4>
+                            <p>Memories you have left on the map. They fade with time, just like real echoes.</p>
+                        </div>
+                        <div class="ledger-entries" id="reflectionEntries">
+                            <!-- Populated by JS -->
+                        </div>
+                        <div class="empty-state" id="emptyReflections" style="display:none;">
+                            <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                            <p>You have not left any memories yet.<br>Click on the map to whisper your first thought.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUGGESTION MODAL -->
+    <div id="suggestion-modal" class="modal-overlay">
+        <div class="modal-card" style="height: auto;">
+            <button class="modal-close-external" id="closeSuggestion">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+            
+            <h3 class="modal-title">Whisper to the Keepers</h3>
+            <p class="modal-subtitle">Found a loose thread? Have a wish?</p>
+            
+            <div class="form-group" style="margin-top: 1rem;">
+                <label class="form-label">Your Message</label>
+                <textarea class="message-input" id="suggestionInput" placeholder="Write your suggestion or report a bug..." style="min-height: 100px;"></textarea>
+            </div>
+            
+            <div class="modal-actions" style="justify-content: center; padding-bottom: 2.5rem;">
+                <button class="btn-send" id="sendSuggestionBtn" style="width: 100%;">Send Whisper</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREATE MODAL -->
+    <div id="create-modal" class="modal-overlay">
+        <div class="modal-card" style="height: auto;">
+            <h3 class="modal-title">Whisper to the Wind</h3>
+            
+            <div class="form-group">
+                <label class="form-label">This memory feels like...</label>
+                <div class="type-selector" id="typeSelector">
+                    <button class="type-btn active" data-type="Echoes">Echoes</button>
+                    <button class="type-btn" data-type="Longing">Longing</button>
+                    <button class="type-btn" data-type="Regret">Regret</button>
+                    <button class="type-btn" data-type="Hope">Hope</button>
+                    <button class="type-btn" data-type="Gratitude">Gratitude</button>
+                    <button class="type-btn" data-type="Farewell">Farewell</button>
+                    <button class="type-btn" data-type="Joy">Joy</button>
+                    <button class="type-btn" data-type="Nostalgia">Nostalgia</button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Your Message</label>
+                <textarea class="message-input" id="messageInput" placeholder="Write what lingers..."></textarea>
+            </div>
+
+            <div class="tiktok-section">
+                <label class="tiktok-toggle" id="tiktokToggle">
+                    <input type="checkbox" id="tiktokCheckbox" style="display:none;">
+                    <svg viewBox="0 0 24 24">
+                         <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+                    </svg>
+                    <span>Attach TikTok Vibe</span>
+                </label>
+                <div class="tiktok-input-wrapper" id="tiktokInputWrapper">
+                    <input type="url" class="tiktok-input" id="tiktokInput" placeholder="Paste TikTok link here...">
+                    <div class="video-loading-notice">
+                        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                        <span>TikTok videos on newly created memories may take a few moments to load.</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-cancel" id="cancelCreate">Cancel</button>
+                <button class="btn-send" id="sendMemory">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW MODAL -->
+    <div id="view-modal" class="modal-overlay">
+        
+        <button class="modal-close-external" id="closeView">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+
+        <div class="modal-card" id="viewModalCard">
+            
+            <div class="tiktok-media-player" id="tiktokMediaPlayer"></div>
+
+            <div class="video-overlay"></div>
+
+            <div class="view-standard" id="viewStandard">
+                <div class="view-content-wrapper">
+                    <div class="view-header-row">
+                        <div class="view-type-col">
+                            <span class="view-type" id="viewMetaStd">ECHOES</span>
+                        </div>
+                        <div class="view-meta-col">
+                            <span class="view-fade" id="viewFadeStd">Fades in 14 days</span>
+                            <button class="view-preserve" id="viewPreserveStd">Keep it alive</button>
+                        </div>
+                    </div>
+                    
+                    <div class="view-center-col">
+                        <p class="view-message" id="viewTextStd"></p>
+                    </div>
+
+                    <div class="view-footer-row">
+                        <div class="view-timestamp-col">
+                            <span class="view-username" id="viewUserStd">anonymous</span>
+                            <span class="view-time" id="viewTimestampStd">Jan 1, 2024</span>
+                        </div>
+                        <div class="view-action-col">
+                             <button class="view-share-btn" id="viewShareStd">
+                                 <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92zM18 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM6 13c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm12 7.02c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg>
+                                 Share
+                             </button>
+                             <div class="share-drawer" id="shareDrawerStd">
+                                 <button class="share-icon-btn" data-platform="download" title="Download Memory">
+                                     <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                                 </button>
+                                 <button class="share-icon-btn copy-link-btn" data-platform="copy" title="Copy Text">
+                                     <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                                 </button>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="view-content-wrapper" id="viewTikTokOverlay" style="display: none; position: absolute; inset: 0; z-index: 2;">
+                <div class="view-header-row">
+                    <div class="view-type-col">
+                        <span class="view-type" id="viewMetaBg">ECHOES</span>
+                    </div>
+                    <div class="view-meta-col">
+                        <span class="view-fade" id="viewFadeBg">Fades in 14 days</span>
+                        <button class="view-preserve" id="viewPreserveBg">Keep it alive</button>
+                    </div>
+                </div>
+                
+                <div class="view-center-col">
+                    <p class="view-message" id="viewTextBg"></p>
+                </div>
+
+                <div class="view-footer-row">
+                    <div class="view-timestamp-col">
+                        <span class="view-username" id="viewUserBg">anonymous</span>
+                        <span class="view-time" id="viewTimestampBg">Jan 1, 2024</span>
+                    </div>
+                    <div class="view-action-col">
+                         <button class="view-share-btn" id="viewShareBg">
+                             <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92zM18 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM6 13c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm12 7.02c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/></svg>
+                             Share
+                         </button>
+                         <div class="share-drawer" id="shareDrawerBg">
+                            <button class="share-icon-btn" data-platform="download" title="Download Video">
+                                <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                            </button>
+                            <button class="share-icon-btn copy-link-btn" data-platform="copy" title="Copy Text">
+                                <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                            </button>
+                         </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        
+        <!-- EXTERNAL REACTIONS DOCK -->
+        <div class="reactions-external-dock" id="externalReactions">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- COMMENTS SECTION -->
+        <div class="comments-container" id="commentsContainer">
+            <div class="comments-header">
+                <h4>Whispers <span id="commentCount">(0)</span></h4>
+            </div>
+            <div class="comments-list" id="commentsList">
+                <div class="comment-empty" id="emptyComments">
+                    <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                    <p>No whispers yet. Be the first to reply.</p>
+                </div>
+            </div>
+            <div class="comment-input-area">
+                <input type="text" id="commentInput" placeholder="Share your thoughts...">
+                <button class="btn-send-comment" id="sendCommentBtn">
+                    <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Hidden Canvas for Image Generation -->
+    <canvas id="shareCanvas"></canvas>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // ==================== COMMENT ELEMENTS ====================
+        const commentsContainer = document.getElementById('commentsContainer');
+        const commentsList = document.getElementById('commentsList');
+        const commentInput = document.getElementById('commentInput');
+        const sendCommentBtn = document.getElementById('sendCommentBtn');
+        const commentCountSpan = document.getElementById('commentCount');
+        const emptyComments = document.getElementById('emptyComments');
+        let unsubscribeComments = null;
+        
+        // ==================== FIREBASE CONFIGURATION ====================
+        const firebaseConfig = {
+            apiKey: "AIzaSyAM-7DmaJ26z8LGiYUo6P7CxhJv46mFYRw",
+            authDomain: "gunita-53359.firebaseapp.com",
+            projectId: "gunita-53359",
+            storageBucket: "gunita-53359.firebasestorage.app",
+            messagingSenderId: "666234171139",
+            appId: "1:666234171139:web:ddb82f6d1b175185f6c336",
+            measurementId: "G-S1W5KPW49J"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // ==================== APP CONFIGURATION ====================
+        const CONFIG = {
+            emberColorsLight: ['#D4896A', '#E8A87C', '#C97B5D', '#BF6D50', '#9E8B7C'],
+            emberColorsDark: ['#FF9E6D', '#FF8A55', '#FF7540', '#E84A1F', '#C9B5A4'],
+            mapCenter: [12.8797, 121.7740],
+            mapZoom: 6,
+            tileLightUrl: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            tileDarkUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            clusterRadius: 45,
+            memoryLifespanDays: 14,
+            extendDays: 3
+        };
+
+        const TYPE_COLORS = {
+            "ECHOES":    "#A0AEC0", "LONGING": "#D53F8C", "REGRET": "#718096", "HOPE": "#D69E2E",
+            "GRATITUDE": "#38A169", "FAREWELL": "#805AD5", "JOY": "#DD6B20", "NOSTALGIA": "#C4A98E",
+            "COMFORT": "#4299E1", "SOLACE": "#319795", "DREAMS": "#B794F4", "COURAGE": "#E53E3E"
+        };
+
+        // ==================== STATE ====================
+        let selectedType = "Echoes";
+        let currentCoords = null;
+        let memories = []; 
+        let map = null;
+        let currentTileLayer = null;
+        let markersLayer = null;
+        let audioUnlocked = false;
+        let currentOpenMemory = null; 
+        let activeShareDrawer = null; 
+        let videoUrlCache = {};
+        let currentUser = null;
+        let unsubscribeMemories = null;
+        let activeFilter = "all"; 
+        let initialLoadDone = false;
+
+        // ==================== NOTIFICATION ELEMENTS ====================
+        const notificationWrapper = document.getElementById('notificationWrapper');
+        const notificationBtn = document.getElementById('notificationBtn');
+        const notificationPanel = document.getElementById('notificationPanel');
+        const notificationList = document.getElementById('notificationList');
+        const notificationBadge = document.getElementById('notificationBadge');
+        const markAllReadBtn = document.getElementById('markAllRead');
+        let unsubscribeNotifications = null;
+
+        // ==================== REACTIONS CONFIGURATION ====================
+        const REACTIONS = [
+            { emoji: '❤️', key: 'heart' },
+            { emoji: '😂', key: 'haha' },
+            { emoji: '😢', key: 'tear' },
+            { emoji: '🤗', key: 'hug' },
+            { emoji: '🔥', key: 'flame' }
+        ];
+        
+        // ==================== THEME TOGGLE ====================
+        const body = document.body;
+        const toggleBtn = document.getElementById('themeToggle');
+        const currentTheme = localStorage.getItem('theme');
+        if (currentTheme) body.setAttribute('data-theme', currentTheme);
+
+        toggleBtn.addEventListener('click', () => {
+            const isDark = body.getAttribute('data-theme') === 'dark';
+            if (isDark) { body.removeAttribute('data-theme'); localStorage.setItem('theme', 'light'); } 
+            else { body.setAttribute('data-theme', 'dark'); localStorage.setItem('theme', 'dark'); }
+            updateMapTiles(); 
+            if (map) setTimeout(() => map.invalidateSize(), 100);
+        });
+
+        // ==================== PARTICLE SYSTEM ====================
+        const canvas = document.getElementById('embers-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+
+        class Ember {
+            constructor(initialSpawn = false) { this.reset(initialSpawn); }
+            reset(initialSpawn = false) {
+                const w = Math.max(1, canvas.width); const h = Math.max(1, canvas.height);
+                if (initialSpawn) { this.x = Math.random() * w; this.y = Math.random() * h; } 
+                else { this.x = Math.random() * w; this.y = h + 20; }
+                this.vx = (Math.random() - 0.5) * 0.5; this.vy = -(Math.random() * 0.8 + 0.2);
+                this.radius = Math.max(0.5, Math.random() * 3 + 1); this.life = 1.0;
+                this.decay = Math.random() * 0.002 + 0.001;
+                const isDark = body.getAttribute('data-theme') === 'dark';
+                const colors = isDark ? CONFIG.emberColorsDark : CONFIG.emberColorsLight;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.wobbleSpeed = Math.random() * 0.03 + 0.01; this.wobbleAmount = Math.random() * 2;
+                this.time = Math.random() * Math.PI * 2;
+            }
+            update() { this.time += this.wobbleSpeed; this.x += this.vx + Math.sin(this.time) * this.wobbleAmount * 0.1; this.y += this.vy; this.life -= this.decay; if (this.life <= 0 || this.y < -50) this.reset(false); }
+            draw() { if (this.life <= 0) return; const alpha = Math.max(0, Math.min(1, this.life * 0.8)); const radius = Math.max(0.1, this.radius * (0.5 + this.life * 0.5)); ctx.save(); ctx.globalAlpha = alpha; ctx.shadowBlur = 20; ctx.shadowColor = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, radius, 0, Math.PI * 2); ctx.fillStyle = this.color; ctx.fill(); ctx.restore(); }
+        }
+        function initParticles() { particles = []; const area = Math.max(1, canvas.width * canvas.height); const count = Math.min(80, Math.floor(area / 15000)); for (let i = 0; i < count; i++) particles.push(new Ember(true)); }
+        function animate() { if (prefersReducedMotion) return; ctx.clearRect(0, 0, canvas.width, canvas.height); particles.forEach(p => { p.update(); p.draw(); }); requestAnimationFrame(animate); }
+        if (!prefersReducedMotion) { resizeCanvas(); initParticles(); animate(); window.addEventListener('resize', () => { resizeCanvas(); initParticles(); }); }
+        
+        // ==================== AUTHENTICATION ====================
+        const userArea = document.getElementById('userArea');
+        const loginModal = document.getElementById('login-modal');
+        const signupModal = document.getElementById('signup-modal');
+        
+        // Auth State Observer
+        auth.onAuthStateChanged(async user => {
+            currentUser = user;
+            updateUserUI();
+            updateReflections(); 
+            
+            if (user) {
+                initNotifications();
+                setTimeout(checkFadingMemories, 2000);
+            } else {
+                if (unsubscribeNotifications) unsubscribeNotifications();
+                notificationWrapper.style.display = 'none';
+            }
+            
+            if (user && currentCoords) {
+                openCreateModal();
+            }
+        });
+
+        function updateUserUI() {
+            if (currentUser) {
+                const displayName = currentUser.displayName || 'Traveler';
+                userArea.innerHTML = `
+                    <span class="user-greeting">Welcome, <strong>${displayName}</strong></span>
+                    <button class="btn-auth logout" id="logoutBtn">Leave</button>
+                `;
+                document.getElementById('logoutBtn').addEventListener('click', () => {
+                    auth.signOut();
+                });
+            } else {
+                userArea.innerHTML = `
+                    <button class="btn-auth" id="signinBtn">Sign In</button>
+                `;
+                document.getElementById('signinBtn').addEventListener('click', openLoginModal);
+            }
+        }
+
+        // Login Modal
+        function openLoginModal() {
+            loginModal.classList.add('active');
+            document.getElementById('loginError').classList.remove('show');
+            document.getElementById('loginEmail').value = '';
+            document.getElementById('loginPassword').value = '';
+        }
+        
+        document.getElementById('closeLogin').addEventListener('click', () => {
+            loginModal.classList.remove('active');
+            currentCoords = null; 
+        });
+        document.getElementById('switchToSignup').addEventListener('click', () => {
+            loginModal.classList.remove('active');
+            signupModal.classList.add('active');
+            document.getElementById('signupError').classList.remove('show');
+            document.getElementById('signupUsername').value = '';
+            document.getElementById('signupEmail').value = '';
+            document.getElementById('signupPassword').value = '';
+        });
+
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            if (!email || !password) {
+                errorDiv.textContent = "Please fill in all fields.";
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                loginModal.classList.remove('active');
+            } catch (error) {
+                errorDiv.textContent = getFriendlyError(error.code);
+                errorDiv.classList.add('show');
+            }
+        });
+
+        // Signup Modal
+        document.getElementById('signupBtn').addEventListener('click', async () => {
+            const username = document.getElementById('signupUsername').value.trim();
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const errorDiv = document.getElementById('signupError');
+            
+            if (!username || !email || !password) {
+                errorDiv.textContent = "Please fill in all fields.";
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            if (password.length < 6) {
+                errorDiv.textContent = "The key must be at least 6 characters long.";
+                errorDiv.classList.add('show');
+                return;
+            }
+
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                await userCredential.user.updateProfile({ displayName: username });
+                
+                const userRef = db.collection('users').doc(userCredential.user.uid);
+                const statsRef = db.collection('stats').doc('userCount');
+                
+                await db.runTransaction(async (transaction) => {
+                    transaction.set(userRef, {
+                        username: username,
+                        email: email,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        memoriesCount: 0,
+                        lastActive: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    
+                    transaction.set(statsRef, { count: firebase.firestore.FieldValue.increment(1) }, { merge: true });
+                });
+                
+                signupModal.classList.remove('active');
+                updateUserUI();
+                
+            } catch (error) {
+                errorDiv.textContent = getFriendlyError(error.code);
+                errorDiv.classList.add('show');
+            }
+        });
+
+        function getFriendlyError(code) {
+            switch(code) {
+                case 'auth/email-already-in-use': return "This lantern is already lit by another traveler.";
+                case 'auth/invalid-email': return "The lantern's light flickers — please check your email.";
+                case 'auth/weak-password': return "The key is too weak. Use at least 6 characters.";
+                case 'auth/user-not-found': return "No traveler found with this lantern.";
+                case 'auth/wrong-password': return "The key doesn't match. Try again.";
+                default: return "Something went wrong in the mist. Please try again.";
+            }
+        }
+
+        // ==================== MAP LOGIC ====================
+        const mapOverlay = document.getElementById('map-overlay');
+        const mainContent = document.getElementById('mainContent');
+        const enterBtn = document.getElementById('enterBtn');
+        const mapClose = document.getElementById('mapClose');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+
+        function initMap() {
+            if (map) return;
+            map = L.map('map-tiles', { center: CONFIG.mapCenter, zoom: CONFIG.mapZoom, zoomControl: false, attributionControl: true });
+            updateMapTiles();
+            markersLayer = L.layerGroup().addTo(map);
+            map.on('click', function(e) {
+                currentCoords = e.latlng;
+                if (!currentUser) {
+                    openLoginModal();
+                } else {
+                    openCreateModal();
+                }
+            });
+            map.on('moveend', updateClusters); 
+            map.on('zoomend', updateClusters);
+        }
+
+        function updateMapTiles() {
+            if (!map) return; 
+            if (currentTileLayer) map.removeLayer(currentTileLayer); 
+            const isDark = body.getAttribute('data-theme') === 'dark';
+            const tileUrl = isDark ? CONFIG.tileDarkUrl : CONFIG.tileLightUrl;
+            currentTileLayer = L.tileLayer(tileUrl, { attribution: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 19, className: 'custom-tiles' }).addTo(map);
+        }
+        
+        function cleanExpiredMemories() {
+            const now = Date.now(); const lifems = CONFIG.memoryLifespanDays * 24 * 60 * 60 * 1000;
+            memories = memories.filter(m => { const expiry = m.expiresAt || (m.createdAt + lifems); return expiry > now; });
+        }
+
+        // ==================== FIX: SMALLER MARKERS ====================
+        function updateClusters() {
+            cleanExpiredMemories();
+            if (!map || !markersLayer) return;
+            markersLayer.clearLayers();
+            
+            let filteredMemories = memories;
+            if (activeFilter !== 'all') {
+                filteredMemories = memories.filter(m => m.type.toLowerCase() === activeFilter.toLowerCase());
+            }
+
+            const clusters = []; 
+            const markers = [];
+            filteredMemories.forEach(m => { const point = map.latLngToContainerPoint(m.coords); markers.push({ ...m, point: point }); });
+            markers.forEach(m => {
+                let addedToCluster = false;
+                for (let c of clusters) {
+                    const dist = Math.sqrt(Math.pow(m.point.x - c.center.x, 2) + Math.pow(m.point.y - c.center.y, 2));
+                    if (dist < CONFIG.clusterRadius) { c.memories.push(m); c.center.x = (c.center.x * (c.memories.length - 1) + m.point.x) / c.memories.length; c.center.y = (c.center.y * (c.memories.length - 1) + m.point.y) / c.memories.length; addedToCluster = true; break; }
+                }
+                if (!addedToCluster) clusters.push({ center: { x: m.point.x, y: m.point.y }, memories: [m] });
+            });
+            clusters.forEach(cluster => {
+                const count = cluster.memories.length;
+                const avgLat = cluster.memories.reduce((sum, m) => sum + m.coords.lat, 0) / count;
+                const avgLng = cluster.memories.reduce((sum, m) => sum + m.coords.lng, 0) / count;
+                
+                // FIX: Reduced size calculation (was 35 + count*6)
+                const size = Math.min(60, 28 + (count * 4)); 
+                const fontSize = count > 9 ? '0.9rem' : '0.8rem';
+                
+                let clusterColor = '#D4896A';
+
+                const icon = L.divIcon({ className: 'cluster-icon', html: `<div class="marker-cluster" style="width:${size}px; height:${size}px; font-size:${fontSize}; background:${clusterColor}; box-shadow: 0 0 0 4px ${clusterColor}33;">${count}</div>`, iconSize: [size, size], iconAnchor: [size/2, size/2] });
+                const marker = L.marker([avgLat, avgLng], { icon: icon });
+                marker.on('click', () => { if (count === 1) openViewModal(cluster.memories[0]); else map.flyTo([avgLat, avgLng], Math.min(map.getZoom() + 2, 18)); });
+                markersLayer.addLayer(marker);
+            });
+        }
+
+        // ==================== FIREBASE REAL-TIME LOADER ====================
+        function loadMemories() {
+            loadingIndicator.style.display = 'flex';
+            
+            const now = Date.now();
+            const day = 24 * 60 * 60 * 1000;
+            
+            const preloadedData = [
+                { coords: [14.5547, 121.0244], type: "Nostalgia", text: "I still sit on that bench where we used to laugh until our ribs hurt. It feels colder now without your voice.", user: "kyle" },
+                { coords: [14.5995, 120.9842], type: "Longing", text: "I pass by this street every day, hoping to see a ghost of you. But the city is too loud to hear my heart breaking.", user: "lara" },
+                { coords: [16.4164, 120.5931], type: "Echoes", text: "The cold air here used to be our excuse to hold hands. Now, it's just a reminder of how warm you were.", user: "mark" },
+                { coords: [14.5352, 121.0018], type: "Regret", text: "We were so happy here. I didn't know that 'forever' had an expiration date. I should have held on tighter.", user: "jhae" },
+                { coords: [14.5851, 120.9830], type: "Farewell", text: "This was where we said goodbye. I walked away without looking back. If I could turn around, I would run.", user: "minnie" },
+                { coords: [14.6091, 120.9894], type: "Echoes", text: "These old walls have seen centuries, but my memories of you are older than time itself.", user: "basti" },
+                { coords: [16.6132, 120.3211], type: "Longing", text: "The waves are crashing hard today, just like the night you let go. I'm still drowning in the silence.", user: "celine" },
+                { coords: [15.1401, 120.5979], type: "Hope", text: "Standing here, I realized that letting you go was the only way to save myself. Finally, I can breathe.", user: "gabo" },
+                { coords: [13.7565, 121.0583], type: "Farewell", text: "We were islands drifting apart. I see the distance now, and it hurts less than holding on to nothing.", user: "rizza" },
+                { coords: [14.1121, 122.9539], type: "Nostalgia", text: "The view is breathtaking, but it means nothing if you aren't standing next to me pointing at the horizon.", user: "paulo" }
+            ];
+
+            const savedStaticReactions = JSON.parse(localStorage.getItem('gunita_static_reactions') || '{}');
+
+            const staticMemories = preloadedData.map((data, index) => {
+                const randomDays = Math.floor(Math.random() * 10) + 1;
+                const createdAt = now - (randomDays * day);
+                const staticId = `static-${index}`;
+                
+                const defaultReactions = { heart: Math.floor(Math.random() * 10), tear: Math.floor(Math.random() * 5), hug: Math.floor(Math.random() * 8), haha: Math.floor(Math.random() * 3) };
+                const finalReactions = savedStaticReactions[staticId] || defaultReactions;
+
+                return {
+                    id: staticId,
+                    coords: L.latLng(data.coords[0], data.coords[1]),
+                    type: data.type, text: data.text, user: data.user,
+                    timestamp: new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                    createdAt: createdAt, tiktokUrl: "", isStatic: true,
+                    reactions: finalReactions
+                };
+            });
+
+            memories = staticMemories;
+            
+            if (unsubscribeMemories) unsubscribeMemories();
+            
+            unsubscribeMemories = db.collection('memories')
+                .orderBy('createdAt', 'desc')
+                .onSnapshot(snapshot => {
+                    snapshot.docChanges().forEach(change => {
+                        if (change.type === "added") {
+                            const data = change.doc.data();
+                            const exists = memories.some(m => m.id === change.doc.id);
+                            if (!exists) {
+                                const createdAtTime = data.createdAt ? data.createdAt.toDate().getTime() : Date.now();
+                                memories.push({
+                                    id: change.doc.id,
+                                    coords: L.latLng(data.coords.latitude, data.coords.longitude),
+                                    type: data.type, 
+                                    text: data.text, 
+                                    user: data.user,
+                                    userId: data.userId,
+                                    timestamp: new Date(createdAtTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                                    createdAt: createdAtTime,
+                                    tiktokUrl: data.tiktokUrl || "",
+                                    isStatic: false,
+                                    reactions: data.reactions || {}
+                                });
+
+                                if (initialLoadDone && data.userId !== (currentUser ? currentUser.uid : null)) {
+                                    showNotification();
+                                }
+                            }
+                        }
+                        if (change.type === "modified") {
+                            const index = memories.findIndex(m => m.id === change.doc.id);
+                            if (index !== -1) {
+                                memories[index].reactions = change.doc.data().reactions || {};
+                                if (currentOpenMemory && currentOpenMemory.id === change.doc.id) {
+                                    renderReactions(memories[index]);
+                                }
+                            }
+                        }
+                    });
+                    
+                    loadingIndicator.style.display = 'none';
+                    updateClusters();
+                    updateWhitepaper();
+                    preFetchVideoUrls();
+                    initialLoadDone = true; 
+                }, error => {
+                    console.error("Error loading Firebase: ", error);
+                    loadingIndicator.querySelector('span').textContent = "Error connecting to database.";
+                });
+                
+            loadStats();
+        }
+        
+        function loadStats() {
+            db.collection('stats').doc('userCount').onSnapshot(doc => {
+                let count = 0;
+                if (doc.exists) {
+                    count = doc.data().count || 0;
+                }
+                document.getElementById('keepersCount').textContent = 36 + count;
+            });
+        }
+
+        // ==================== COMMENTS LOGIC ====================
+        function renderComments(comments) {
+            const count = comments.length;
+            const toggleCount = document.getElementById('commentToggleCount');
+            if (toggleCount) toggleCount.textContent = count;
+
+            if (count === 0) {
+                commentsList.innerHTML = '';
+                commentsList.appendChild(emptyComments);
+                emptyComments.style.display = 'flex';
+                commentCountSpan.textContent = "(0)";
+                return;
+            }
+
+            commentCountSpan.textContent = `(${count})`;
+            emptyComments.style.display = 'none';
+
+            commentsList.innerHTML = comments.map(c => `
+                <div class="comment-item">
+                    <div class="comment-header">
+                        <span class="comment-username">${c.user}</span>
+                        <span class="comment-time">${c.time}</span>
+                    </div>
+                    <p class="comment-text">${c.text}</p>
+                </div>
+            `).join('');
+        }
+
+        function loadComments(memoryId) {
+            if (unsubscribeComments) unsubscribeComments();
+            const commentsRef = db.collection('memories').doc(memoryId).collection('comments').orderBy('createdAt', 'asc');
+            
+            unsubscribeComments = commentsRef.onSnapshot(snapshot => {
+                const items = [];
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    items.push({
+                        id: doc.id,
+                        text: data.text,
+                        user: data.user,
+                        time: data.createdAt ? timeAgo(data.createdAt.toDate()) : 'Just now'
+                    });
+                });
+                
+                if(currentOpenMemory) currentOpenMemory.commentsCount = items.length;
+                renderComments(items);
+            });
+        }
+
+        async function sendComment() {
+            const text = commentInput.value.trim();
+            if (!text || !currentOpenMemory) return;
+            
+            if (!currentUser) { openLoginModal(); return; }
+
+            sendCommentBtn.disabled = true;
+            sendCommentBtn.style.opacity = "0.5";
+
+            try {
+                await db.collection('memories').doc(currentOpenMemory.id).collection('comments').add({
+                    text: text, userId: currentUser.uid, user: currentUser.displayName || 'Traveler',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                commentInput.value = '';
+                
+                if (currentOpenMemory.userId !== currentUser.uid) {
+                     createNotification(currentOpenMemory.userId, 'comment', { actor: currentUser.displayName || 'Someone', memoryId: currentOpenMemory.id });
+                }
+            } catch (error) { console.error("Error sending comment:", error); } 
+            finally { sendCommentBtn.disabled = false; sendCommentBtn.style.opacity = "1"; }
+        }
+
+        sendCommentBtn.addEventListener('click', sendComment);
+        commentInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendComment(); });
+
+        // ==================== NOTIFICATION SYSTEM FUNCTIONS ====================
+        notificationBtn.addEventListener('click', () => { notificationPanel.classList.toggle('active'); });
+        document.addEventListener('click', (e) => {
+            if (!notificationWrapper.contains(e.target)) { notificationPanel.classList.remove('active'); }
+        });
+        markAllReadBtn.addEventListener('click', async () => {
+            if (!currentUser) return;
+            const batch = db.batch();
+            const snapshot = await db.collection('users').doc(currentUser.uid).collection('notifications').where('read', '==', false).get();
+            snapshot.docs.forEach(doc => { batch.update(doc.ref, { read: true }); });
+            await batch.commit();
+        });
+
+        async function createNotification(targetUserId, type, data) {
+            if (!targetUserId || targetUserId === (currentUser ? currentUser.uid : null)) return;
+            const notifRef = db.collection('users').doc(targetUserId).collection('notifications').doc();
+            let text = "";
+            if (type === 'reaction') text = `${data.actor} reacted with ${data.emoji} to your memory.`;
+            else if (type === 'preserve') text = `${data.actor} kept your memory alive.`;
+            else if (type === 'fading') text = `Your memory "${data.preview}" is fading soon.`;
+            else if (type === 'comment') text = `${data.actor} replied to your memory.`;
+
+            await notifRef.set({ type: type, text: text, memoryId: data.memoryId || null, read: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+
+        function initNotifications() {
+            if (!currentUser) return;
+            notificationWrapper.style.display = 'flex';
+            if (unsubscribeNotifications) unsubscribeNotifications();
+            const notifRef = db.collection('users').doc(currentUser.uid).collection('notifications');
+            
+            unsubscribeNotifications = notifRef.orderBy('createdAt', 'desc').limit(20).onSnapshot(snapshot => {
+                let unreadCount = 0;
+                const items = [];
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (!data.read) unreadCount++;
+                    items.push({ id: doc.id, ...data });
+                });
+
+                if (unreadCount > 0) { notificationBadge.textContent = unreadCount > 9 ? '9+' : unreadCount; notificationBadge.classList.add('show'); } 
+                else { notificationBadge.classList.remove('show'); }
+
+                if (items.length === 0) {
+                    notificationList.innerHTML = `<div class="notification-empty"><svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg><p>No new whispers.</p></div>`;
+                } else {
+                    notificationList.innerHTML = items.map(item => {
+                        const timeStr = item.createdAt ? timeAgo(item.createdAt.toDate()) : 'Just now';
+                        const isUnread = !item.read ? 'unread' : '';
+                        const isFading = item.type === 'fading' ? 'fading' : '';
+                        let icon = '🔔';
+                        if (item.type === 'reaction') icon = item.text.includes('❤️') ? '❤️' : (item.text.includes('😢') ? '😢' : '✨');
+                        if (item.type === 'preserve') icon = '⏳';
+                        if (item.type === 'fading') icon = '🍂';
+                        if (item.type === 'comment') icon = '💬';
+
+                        return `<div class="notification-item ${isUnread} ${isFading}" data-id="${item.id}" data-memory="${item.memoryId || ''}"><div class="notification-icon">${icon}</div><div class="notification-content"><p class="notification-text">${item.text}</p><span class="notification-time">${timeStr}</span></div></div>`;
+                    }).join('');
+
+                    notificationList.querySelectorAll('.notification-item').forEach(el => {
+                        el.addEventListener('click', async (e) => {
+                            const id = el.dataset.id;
+                            const memId = el.dataset.memory;
+                            await db.collection('users').doc(currentUser.uid).collection('notifications').doc(id).update({ read: true });
+                            if (memId) {
+                                const memory = memories.find(m => m.id === memId);
+                                if (memory) { notificationPanel.classList.remove('active'); openViewModal(memory); }
+                            }
+                        });
+                    });
+                }
+            });
+        }
+
+        function timeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+            if (seconds < 60) return "Just now";
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            return `${days}d ago`;
+        }
+
+        function checkFadingMemories() {
+            if (!currentUser) return;
+            const now = Date.now();
+            const oneDay = 24 * 60 * 60 * 1000;
+            memories.forEach(async m => {
+                if (m.userId === currentUser.uid) {
+                    const daysLeft = getDaysRemaining(m);
+                    if (daysLeft <= 1) {
+                        const preview = m.text.substring(0, 20) + "...";
+                        const existing = await db.collection('users').doc(currentUser.uid).collection('notifications').where('memoryId', '==', m.id).where('type', '==', 'fading').get();
+                        if (existing.empty) createNotification(currentUser.uid, 'fading', { memoryId: m.id, preview: preview, actor: 'Gunita' });
+                    }
+                }
+            });
+        }
+
+        const notificationToast = document.getElementById('notificationToast');
+        function showNotification() {
+            notificationToast.classList.add('show');
+            setTimeout(() => { notificationToast.classList.remove('show'); }, 4000);
+        }
+
+        // ==================== WHITEPAPER LOGIC ====================
+        const whitepaperModal = document.getElementById('whitepaper-modal');
+        const whitepaperFab = document.getElementById('whitepaperFab');
+        const closeWhitepaper = document.getElementById('closeWhitepaper');
+        const whitepaperTabs = document.querySelectorAll('.whitepaper-tab');
+
+        whitepaperFab.addEventListener('click', () => { whitepaperModal.classList.add('active'); updateWhitepaper(); });
+        closeWhitepaper.addEventListener('click', () => whitepaperModal.classList.remove('active'));
+        whitepaperModal.addEventListener('click', (e) => { if (e.target === whitepaperModal) whitepaperModal.classList.remove('active'); });
+
+        whitepaperTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const section = tab.dataset.section;
+                whitepaperTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                document.querySelectorAll('.whitepaper-section').forEach(s => s.classList.remove('active'));
+                document.getElementById(`section-${section}`).classList.add('active');
+                if (section === 'reflections') updateReflections();
+            });
+        });
+
+        function updateWhitepaper() {
+            const now = Date.now();
+            const day = 24 * 60 * 60 * 1000;
+            const todayStart = new Date().setHours(0, 0, 0, 0);
+            
+            document.getElementById('totalMemories').textContent = memories.length;
+            document.getElementById('activeToday').textContent = memories.filter(m => m.createdAt >= todayStart).length;
+            
+            const ledgerEntries = document.getElementById('ledgerEntries');
+            const recentMemories = [...memories].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
+            
+            ledgerEntries.innerHTML = recentMemories.map(m => {
+                const typeColor = TYPE_COLORS[m.type.toUpperCase()] || '#8A8279';
+                const truncatedText = m.text.length > 50 ? m.text.substring(0, 50) + '...' : m.text;
+                return `
+                    <div class="ledger-entry" data-id="${m.id}">
+                        <div class="entry-type-badge" style="background-color: ${typeColor};"></div>
+                        <div class="entry-content">
+                            <div class="entry-text">"${truncatedText}"</div>
+                            <div class="entry-meta">${m.type} — ${m.timestamp}</div>
+                        </div>
+                        <div class="entry-location">
+                            <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            ${m.coords.lat.toFixed(2)}, ${m.coords.lng.toFixed(2)}
+                        </div>
+                    </div>`;
+            }).join('');
+
+            ledgerEntries.querySelectorAll('.ledger-entry').forEach(entry => {
+                entry.addEventListener('click', () => {
+                    const memory = memories.find(m => m.id === entry.dataset.id);
+                    if (memory) { whitepaperModal.classList.remove('active'); openViewModal(memory); }
+                });
+            });
+
+            const typeLegend = document.getElementById('typeLegend');
+            typeLegend.innerHTML = Object.entries(TYPE_COLORS).slice(0, 8).map(([type, color]) => `
+                <div class="legend-item"><div class="legend-color" style="background-color: ${color};"></div><span class="legend-name">${type}</span></div>`).join('');
+        }
+
+        function updateReflections() {
+            const reflectionsContainer = document.getElementById('reflectionEntries');
+            const emptyState = document.getElementById('emptyReflections');
+            
+            if (!currentUser) {
+                reflectionsContainer.innerHTML = '';
+                emptyState.style.display = 'block';
+                emptyState.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg><p>Sign in to see your reflections.</p>`;
+                return;
+            }
+
+            const userMemories = memories.filter(m => m.userId === currentUser.uid);
+            if (userMemories.length === 0) {
+                reflectionsContainer.innerHTML = '';
+                emptyState.style.display = 'block';
+                emptyState.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg><p>You have not left any memories yet.<br>Click on the map to whisper your first thought.</p>`;
+            } else {
+                emptyState.style.display = 'none';
+                reflectionsContainer.innerHTML = userMemories.map(m => {
+                    const typeColor = TYPE_COLORS[m.type.toUpperCase()] || '#8A8279';
+                    return `<div class="ledger-entry" data-id="${m.id}"><div class="entry-type-badge" style="background-color: ${typeColor};"></div><div class="entry-content"><div class="entry-text">"${m.text}"</div><div class="entry-meta">${m.type} — ${m.timestamp}</div></div></div>`;
+                }).join('');
+
+                reflectionsContainer.querySelectorAll('.ledger-entry').forEach(entry => {
+                    entry.addEventListener('click', () => {
+                        const memory = memories.find(m => m.id === entry.dataset.id);
+                        if (memory) { whitepaperModal.classList.remove('active'); openViewModal(memory); }
+                    });
+                });
+            }
+        }
+
+        // ==================== SUGGESTION MODAL ====================
+        const suggestionModal = document.getElementById('suggestion-modal');
+        const suggestionFab = document.getElementById('suggestionFab');
+        const closeSuggestion = document.getElementById('closeSuggestion');
+        const sendSuggestionBtn = document.getElementById('sendSuggestionBtn');
+        const suggestionInput = document.getElementById('suggestionInput');
+
+        suggestionFab.addEventListener('click', () => { suggestionModal.classList.add('active'); });
+        closeSuggestion.addEventListener('click', () => suggestionModal.classList.remove('active'));
+        suggestionModal.addEventListener('click', (e) => { if (e.target === suggestionModal) suggestionModal.classList.remove('active'); });
+
+        sendSuggestionBtn.addEventListener('click', async () => {
+            const text = suggestionInput.value.trim();
+            if (!text) return;
+            sendSuggestionBtn.textContent = "Sending...";
+            sendSuggestionBtn.disabled = true;
+            try {
+                await db.collection('suggestions').add({ text: text, userId: currentUser ? currentUser.uid : 'anonymous', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                suggestionInput.value = '';
+                suggestionModal.classList.remove('active');
+                showSuccessToast(); 
+                document.querySelector('#successToast span').textContent = "Whisper received. Thank you.";
+            } catch (error) { console.error("Error sending suggestion: ", error); } 
+            finally {
+                sendSuggestionBtn.textContent = "Send Whisper";
+                sendSuggestionBtn.disabled = false;
+                setTimeout(() => { document.querySelector('#successToast span').textContent = "Memory released to the wind"; }, 3000);
+            }
+        });
+
+        // ==================== MODAL LOGIC ====================
+        const createModal = document.getElementById('create-modal');
+        const viewModal = document.getElementById('view-modal');
+        const typeSelector = document.getElementById('typeSelector');
+        const messageInput = document.getElementById('messageInput');
+        const cancelCreate = document.getElementById('cancelCreate');
+        const sendMemoryBtn = document.getElementById('sendMemory');
+        const closeViewBtn = document.getElementById('closeView');
+        const successToast = document.getElementById('successToast');
+        
+        const tiktokToggle = document.getElementById('tiktokToggle');
+        const tiktokInputWrapper = document.getElementById('tiktokInputWrapper');
+        const tiktokCheckbox = document.getElementById('tiktokCheckbox');
+        const tiktokInput = document.getElementById('tiktokInput');
+        const tiktokPlayer = document.getElementById('tiktokMediaPlayer');
+        const viewCard = document.getElementById('viewModalCard');
+
+        tiktokToggle.addEventListener('click', () => { tiktokCheckbox.checked = !tiktokCheckbox.checked; tiktokInputWrapper.classList.toggle('active', tiktokCheckbox.checked); });
+        typeSelector.addEventListener('click', (e) => {
+            if(e.target.classList.contains('type-btn')) {
+                document.querySelectorAll('.type-btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active'); selectedType = e.target.dataset.type;
+            }
+        });
+
+        function openCreateModal() {
+            if (!currentUser) { openLoginModal(); return; }
+            document.querySelectorAll('.type-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('.type-btn[data-type="Echoes"]').classList.add('active');
+            selectedType = "Echoes"; messageInput.value = "";
+            tiktokCheckbox.checked = false; tiktokInputWrapper.classList.remove('active'); tiktokInput.value = "";
+            createModal.classList.add('active');
+            setTimeout(() => messageInput.focus(), 300);
+        }
+        
+        function closeCreateModal() { createModal.classList.remove('active'); currentCoords = null; }
+        function showSuccessToast() { successToast.classList.add('show'); setTimeout(() => { successToast.classList.remove('show'); }, 3000); }
+
+        // ==================== REACTIONS LOGIC ====================
+        function renderReactions(memory) {
+            const container = document.getElementById('externalReactions');
+            if (!container) return;
+            container.innerHTML = ''; 
+            const reactionsData = memory.reactions || {};
+
+            REACTIONS.forEach(r => {
+                const count = reactionsData[r.key] || 0;
+                const btn = document.createElement('button');
+                btn.className = 'reaction-btn';
+                btn.dataset.key = r.key;
+                btn.innerHTML = `<span class="reaction-emoji">${r.emoji}</span><span class="reaction-count">${count}</span>`;
+                btn.onclick = (e) => { e.stopPropagation(); handleReaction(memory.id, r.key); };
+                container.appendChild(btn);
+            });
+
+            const commentCount = (memory.commentsCount || 0);
+            const toggleBtn = document.createElement('button');
+            toggleBtn.className = 'reaction-btn';
+            toggleBtn.id = 'toggleCommentsBtn';
+            toggleBtn.style.marginLeft = 'auto';
+            toggleBtn.innerHTML = `<span class="reaction-emoji">💬</span><span class="reaction-count" id="commentToggleCount">${commentCount}</span>`;
+            toggleBtn.onclick = (e) => { e.stopPropagation(); document.getElementById('commentsContainer').classList.toggle('drawer-open'); };
+            container.appendChild(toggleBtn);
+        }
+
+        async function handleReaction(memoryId, reactionKey) {
+            const memIndex = memories.findIndex(m => m.id === memoryId);
+            if (memIndex === -1) return;
+
+            if (!memories[memIndex].reactions) memories[memIndex].reactions = {};
+            const currentCount = memories[memIndex].reactions[reactionKey] || 0;
+            memories[memIndex].reactions[reactionKey] = currentCount + 1;
+            renderReactions(memories[memIndex]);
+
+            try {
+                if (memories[memIndex].isStatic) {
+                    const savedStaticReactions = JSON.parse(localStorage.getItem('gunita_static_reactions') || '{}');
+                    savedStaticReactions[memoryId] = memories[memIndex].reactions;
+                    localStorage.setItem('gunita_static_reactions', JSON.stringify(savedStaticReactions));
+                } else {
+                    if (currentUser) {
+                        await db.collection('memories').doc(memoryId).update({ [`reactions.${reactionKey}`]: firebase.firestore.FieldValue.increment(1) });
+                        const emojiMap = { heart: '❤️', haha: '😂', tear: '😢', hug: '🤗', flame: '🔥' };
+                        await createNotification(memories[memIndex].userId, 'reaction', { actor: currentUser.displayName || 'Someone', emoji: emojiMap[reactionKey] || '✨', memoryId: memoryId });
+                    }
+                }
+            } catch (error) {
+                console.error("Error updating reaction: ", error);
+                memories[memIndex].reactions[reactionKey] = currentCount;
+                renderReactions(memories[memIndex]);
+            }
+        }
+
+        // ==================== AUDIO & VIDEO ====================
+        function unlockAudio() { if (audioUnlocked) return; const audioCtx = new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume().then(() => { audioUnlocked = true; }); }
+        
+        async function fetchTikTokVideoUrl(tiktokUrl) { 
+            try { 
+                const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(tiktokUrl)}`; 
+                const response = await fetch(apiUrl); 
+                const data = await response.json(); 
+                if (data.data && data.data.play) return data.data.play; 
+                return null; 
+            } catch (error) { console.error("Error fetching TikTok video:", error); return null; } 
+        }
+        
+        function getDaysRemaining(memory) { const now = Date.now(); const expiry = memory.expiresAt || (memory.createdAt + (CONFIG.memoryLifespanDays * 24 * 60 * 60 * 1000)); return Math.max(0, Math.ceil((expiry - now) / (24 * 60 * 60 * 1000))); }
+        
+        function handlePreserve(e) { 
+            e.stopPropagation(); 
+            if(!currentOpenMemory) return; 
+            const oldExpiry = currentOpenMemory.expiresAt || (currentOpenMemory.createdAt + (CONFIG.memoryLifespanDays * 24 * 60 * 60 * 1000));
+            currentOpenMemory.expiresAt = oldExpiry + (CONFIG.extendDays * 24 * 60 * 60 * 1000); 
+            const newDays = getDaysRemaining(currentOpenMemory); 
+            document.getElementById('viewFadeStd').textContent = `Fades in ${newDays} days`; 
+            document.getElementById('viewFadeBg').textContent = `Fades in ${newDays} days`; 
+            const btn = e.target; 
+            btn.textContent = "Kept alive!"; 
+            setTimeout(() => btn.textContent = "Keep it alive", 2000); 
+            if (currentOpenMemory.userId !== (currentUser ? currentUser.uid : null)) {
+                createNotification(currentOpenMemory.userId, 'preserve', { actor: currentUser.displayName || 'Someone', memoryId: currentOpenMemory.id });
+            }
+        }
+
+        function setupVideoPlayer(videoUrl) {
+            viewCard.classList.add('has-tiktok');
+            document.getElementById('viewStandard').style.display = 'none';
+            document.getElementById('viewTikTokOverlay').style.display = 'flex';
+            tiktokPlayer.innerHTML = '';
+            const video = document.createElement('video');
+            video.src = videoUrl; video.preload = "auto"; video.autoplay = true; video.loop = true; video.muted = false; video.playsInline = true;
+            video.crossOrigin = "anonymous"; 
+            video.style.cssText = 'width: 100%; height: 100%; object-fit: cover; filter: brightness(0.5) contrast(1.1);';
+            video.play().catch(error => { video.muted = true; video.play(); });
+            tiktokPlayer.appendChild(video);
+        }
+
+        function preFetchVideoUrls() {
+            memories.forEach(memory => {
+                if (memory.tiktokUrl && !videoUrlCache[memory.id]) {
+                    fetchTikTokVideoUrl(memory.tiktokUrl).then(url => { if (url) videoUrlCache[memory.id] = url; });
+                }
+            });
+        }
+
+        // ==================== ADVANCED SHARE LOGIC ====================
+        const shareLoadingOverlay = document.getElementById('shareLoadingOverlay');
+        
+        function wrapText(context, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+            let testLine = '';
+            let lineCount = 0;
+            for(let n = 0; n < words.length; n++) {
+                testLine = line + words[n] + ' ';
+                const metrics = context.measureText(testLine);
+                if (metrics.width > maxWidth && n > 0) {
+                    context.fillText(line, x, y + (lineCount * lineHeight));
+                    line = words[n] + ' ';
+                    lineCount++;
+                } else { line = testLine; }
+            }
+            context.fillText(line, x, y + (lineCount * lineHeight));
+        }
+
+        function toggleShareDrawer(drawer) {
+            if (!drawer) return;
+            const isActive = drawer.classList.contains('active');
+            if (activeShareDrawer) activeShareDrawer.classList.remove('active');
+            if (!isActive) { drawer.classList.add('active'); activeShareDrawer = drawer; } else { activeShareDrawer = null; }
+        }
+
+        async function generateStandardImage(memory) {
+            const modalContent = document.getElementById('viewStandard');
+            const actionCol = modalContent.querySelector('.view-action-col');
+            const originalDisplay = actionCol.style.display;
+            actionCol.style.display = 'none';
+            const rawCanvas = await html2canvas(modalContent, { backgroundColor: null, scale: 2, logging: false, useCORS: true });
+            actionCol.style.display = originalDisplay;
+            const cornerRadius = 48;
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = rawCanvas.width; finalCanvas.height = rawCanvas.height;
+            const ctx = finalCanvas.getContext('2d');
+            ctx.beginPath();
+            ctx.moveTo(cornerRadius, 0); ctx.lineTo(finalCanvas.width - cornerRadius, 0);
+            ctx.quadraticCurveTo(finalCanvas.width, 0, finalCanvas.width, cornerRadius);
+            ctx.lineTo(finalCanvas.width, finalCanvas.height - cornerRadius);
+            ctx.quadraticCurveTo(finalCanvas.width, finalCanvas.height, finalCanvas.width - cornerRadius, finalCanvas.height);
+            ctx.lineTo(cornerRadius, finalCanvas.height);
+            ctx.quadraticCurveTo(0, finalCanvas.height, 0, finalCanvas.height - cornerRadius);
+            ctx.lineTo(0, cornerRadius);
+            ctx.quadraticCurveTo(0, 0, cornerRadius, 0);
+            ctx.closePath();
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            ctx.fillStyle = isDark ? '#12110F' : '#F7F2EA';
+            ctx.fill();
+            ctx.clip();
+            ctx.drawImage(rawCanvas, 0, 0);
+            return new Promise((resolve) => finalCanvas.toBlob(resolve, 'image/png'));
+        }
+
+        async function generateTikTokVideo(memory) {
+            return new Promise(async (resolve) => {
+                const video = document.querySelector('#tiktokMediaPlayer video');
+                if (!video) return resolve(null);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d', { alpha: false });
+                canvas.width = 1080; canvas.height = 1920;
+
+                const overlayCanvas = document.createElement('canvas');
+                overlayCanvas.width = canvas.width; overlayCanvas.height = canvas.height;
+                const oCtx = overlayCanvas.getContext('2d');
+                const gradient = oCtx.createLinearGradient(0, 0, 0, canvas.height);
+                gradient.addColorStop(0, 'rgba(0,0,0,0.7)'); gradient.addColorStop(0.3, 'rgba(0,0,0,0)');
+                gradient.addColorStop(0.7, 'rgba(0,0,0,0)'); gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
+                oCtx.fillStyle = gradient;
+                oCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+                oCtx.textAlign = 'left'; oCtx.font = 'bold 35px Lora, serif';
+                oCtx.fillStyle = TYPE_COLORS[memory.type.toUpperCase()] || '#FFFFFF';
+                oCtx.fillText(memory.type.toUpperCase(), 80, 120);
+                const days = getDaysRemaining(memory);
+                oCtx.font = 'italic 30px Lora, serif'; oCtx.fillStyle = 'rgba(255,255,255,0.8)';
+                oCtx.textAlign = 'right'; oCtx.fillText(`Fades in ${days} days`, canvas.width - 80, 120);
+
+                oCtx.textAlign = 'center'; oCtx.font = 'italic 55px "Cormorant Garamond", serif';
+                oCtx.fillStyle = '#FFFFFF'; oCtx.shadowColor = "rgba(0,0,0,0.8)"; oCtx.shadowBlur = 20;
+                const displayText = `"${memory.text}"`;
+                wrapText(oCtx, displayText, canvas.width / 2, canvas.height / 2 - 100, 900, 85);
+                oCtx.shadowBlur = 0;
+
+                oCtx.textAlign = 'left'; oCtx.font = '40px Lora, serif';
+                oCtx.fillStyle = 'rgba(255,255,255,0.9)';
+                oCtx.fillText(`— ${memory.user}`, 80, canvas.height - 180);
+                oCtx.font = '30px Lora, serif'; oCtx.fillStyle = 'rgba(255,255,255,0.6)';
+                oCtx.fillText(memory.timestamp, 80, canvas.height - 130);
+                oCtx.textAlign = 'center'; oCtx.font = 'bold 35px "Cormorant Garamond", serif';
+                oCtx.fillStyle = 'rgba(255,255,255,0.5)';
+                oCtx.fillText('gunita-53359.web.app', canvas.width / 2, canvas.height - 60);
+
+                let audioDestination = null; let audioCtx = null;
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    if (audioCtx.state === 'suspended') await audioCtx.resume();
+                    const tempSource = audioCtx.createMediaElementSource(video);
+                    audioDestination = audioCtx.createMediaStreamDestination();
+                    tempSource.connect(audioDestination); tempSource.connect(audioCtx.destination);
+                } catch (e) { console.warn("Audio capture failed", e); }
+
+                const canvasStream = canvas.captureStream(30);
+                let finalStream;
+                if (audioDestination) finalStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDestination.stream.getAudioTracks()]);
+                else finalStream = canvasStream;
+
+                let mimeType = 'video/webm; codecs=vp9';
+                const codecs = ['video/mp4; codecs="avc1.42E01E, mp4a.40.2"', 'video/webm; codecs=vp8', 'video/webm; codecs=vp9', 'video/webm'];
+                for (const codec of codecs) { if (MediaRecorder.isTypeSupported(codec)) { mimeType = codec; break; } }
+
+                const mediaRecorder = new MediaRecorder(finalStream, { mimeType: mimeType, videoBitsPerSecond: 8000000 });
+                const chunks = [];
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+                    const blob = new Blob(chunks, { type: mimeType });
+                    if(audioCtx) audioCtx.close();
+                    blob._extension = ext; 
+                    resolve(blob);
+                };
+
+                video.loop = false; video.currentTime = 0; video.muted = false; 
+                if (video.readyState < 3) await new Promise(res => video.oncanplay = res);
+                const startTime = Date.now();
+                const MAX_DURATION = 15000;
+                try { await video.play(); } catch(e) { console.warn("Play blocked"); }
+                mediaRecorder.start();
+
+                function drawFrame() {
+                    const elapsed = Date.now() - startTime;
+                    if (video.ended || elapsed >= MAX_DURATION) { mediaRecorder.stop(); video.pause(); return; }
+                    ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    if (video.readyState >= 2) {
+                        const videoRatio = video.videoWidth / video.videoHeight;
+                        const canvasRatio = canvas.width / canvas.height;
+                        let drawWidth, drawHeight, offsetX, offsetY;
+                        if (videoRatio > canvasRatio) {
+                            drawHeight = canvas.height; drawWidth = canvas.height * videoRatio;
+                            offsetX = (canvas.width - drawWidth) / 2; offsetY = 0;
+                        } else {
+                            drawWidth = canvas.width; drawHeight = canvas.width / videoRatio;
+                            offsetX = 0; offsetY = (canvas.height - drawHeight) / 2;
+                        }
+                        ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+                    }
+                    ctx.drawImage(overlayCanvas, 0, 0);
+                    requestAnimationFrame(drawFrame);
+                }
+                drawFrame();
+            });
+        }
+
+        async function handleShareAction(platform, memory) {
+            if (!memory) return;
+            shareLoadingOverlay.classList.add('active');
+            try {
+                let blob; let fileName;
+                if (memory.tiktokUrl && videoUrlCache[memory.id]) {
+                    blob = await generateTikTokVideo(memory);
+                    const ext = blob._extension || 'webm'; 
+                    fileName = `gunita-memory-${memory.id}.${ext}`;
+                } else {
+                    blob = await generateStandardImage(memory);
+                    fileName = `gunita-memory-${memory.id}.png`;
+                }
+                if (!blob) throw new Error("Could not generate file.");
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = fileName;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (error) { console.error("Download failed:", error); alert("Could not generate file: " + error.message); } 
+            finally { shareLoadingOverlay.classList.remove('active'); }
+        }
+
+        function initShareButtons() {
+            ['Std', 'Bg'].forEach(suffix => {
+                const shareBtn = document.getElementById(`viewShare${suffix}`);
+                const drawer = document.getElementById(`shareDrawer${suffix}`);
+                if(!shareBtn || !drawer) return;
+                shareBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleShareDrawer(drawer); });
+                drawer.querySelectorAll('.share-icon-btn').forEach(iconBtn => {
+                    iconBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const platform = iconBtn.dataset.platform;
+                        if (platform === 'copy') {
+                           navigator.clipboard.writeText(currentOpenMemory.text);
+                           iconBtn.classList.add('copied');
+                           const originalHtml = iconBtn.innerHTML;
+                           iconBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+                           setTimeout(() => { iconBtn.innerHTML = originalHtml; iconBtn.classList.remove('copied'); }, 2000);
+                        } else { handleShareAction(platform, currentOpenMemory); drawer.classList.remove('active'); activeShareDrawer = null; }
+                    });
+                });
+            });
+        }
+        
+        function initModalCloseOnOutsideClick() {
+            document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.classList.remove('active');
+                        if (overlay.id === 'create-modal') closeCreateModal();
+                        if (overlay.id === 'view-modal') {
+                            const video = tiktokPlayer.querySelector('video');
+                            if(video) video.pause();
+                            if (unsubscribeComments) unsubscribeComments();
+                        }
+                    }
+                });
+            });
+        }
+        
+        initModalCloseOnOutsideClick();
+        initShareButtons();
+        
+        document.getElementById('viewPreserveStd').addEventListener('click', handlePreserve); 
+        document.getElementById('viewPreserveBg').addEventListener('click', handlePreserve);
+        
+        document.addEventListener('click', (e) => { if (activeShareDrawer && !activeShareDrawer.contains(e.target) && !e.target.closest('.view-share-btn')) { activeShareDrawer.classList.remove('active'); activeShareDrawer = null; } });
+
+        // ==================== VIEW MODAL ====================
+        async function openViewModal(memory) {
+            currentOpenMemory = memory;
+            document.getElementById('commentsContainer').classList.remove('drawer-open');
+            if (activeShareDrawer) { activeShareDrawer.classList.remove('active'); activeShareDrawer = null; }
+            
+            const typeText = memory.type.toUpperCase(); const timestampText = `Released on ${memory.timestamp}`; const daysLeft = getDaysRemaining(memory); const fadeText = `Fades in ${daysLeft} days`;
+            const displayText = `"${memory.text}"`; const displayUser = `—${memory.user}`;
+
+            document.getElementById('viewTextStd').scrollTop = 0;
+            document.getElementById('viewTextBg').scrollTop = 0;
+
+            tiktokPlayer.innerHTML = ''; 
+            viewCard.classList.remove('has-tiktok');
+            document.getElementById('viewStandard').style.display = 'flex'; 
+            document.getElementById('viewTikTokOverlay').style.display = 'none';
+
+            document.getElementById('viewMetaStd').textContent = typeText; 
+            document.getElementById('viewTextStd').textContent = displayText; 
+            document.getElementById('viewUserStd').textContent = displayUser; 
+            document.getElementById('viewTimestampStd').textContent = timestampText; 
+            document.getElementById('viewFadeStd').textContent = fadeText;
+
+            document.getElementById('viewMetaBg').textContent = typeText; 
+            document.getElementById('viewTextBg').textContent = displayText; 
+            document.getElementById('viewUserBg').textContent = displayUser; 
+            document.getElementById('viewTimestampBg').textContent = timestampText; 
+            document.getElementById('viewFadeBg').textContent = fadeText;
+            
+            const typeColor = TYPE_COLORS[typeText] || '#FFFFFF';
+            document.getElementById('viewMetaStd').style.color = typeColor; 
+            document.getElementById('viewMetaBg').style.color = typeColor;
+            
+            renderReactions(memory);
+            loadComments(memory.id);
+            viewModal.classList.add('active');
+
+            if(memory.tiktokUrl) {
+                if (videoUrlCache[memory.id]) setupVideoPlayer(videoUrlCache[memory.id]);
+                else {
+                    const videoUrl = await fetchTikTokVideoUrl(memory.tiktokUrl);
+                    if (videoUrl) { videoUrlCache[memory.id] = videoUrl; setupVideoPlayer(videoUrl); }
+                }
+            }
+        }
+
+        // ==================== SEND TO FIREBASE ====================
+        sendMemoryBtn.addEventListener('click', async () => {
+            const text = messageInput.value.trim();
+            if (!text || !currentCoords) return;
+            const tiktokUrl = tiktokCheckbox.checked ? tiktokInput.value.trim() : '';
+            
+            if (!currentUser) return;
+            
+            sendMemoryBtn.textContent = "Sending...";
+            sendMemoryBtn.disabled = true;
+            try {
+                await db.collection('memories').add({
+                    type: selectedType, text: text, user: currentUser.displayName || 'Traveler', userId: currentUser.uid,
+                    tiktokUrl: tiktokUrl, coords: new firebase.firestore.GeoPoint(currentCoords.lat, currentCoords.lng),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(), reactions: {}
+                });
+                db.collection('users').doc(currentUser.uid).update({
+                    memoriesCount: firebase.firestore.FieldValue.increment(1),
+                    lastActive: firebase.firestore.FieldValue.serverTimestamp()
+                }).catch(err => console.log("User stats update skipped", err));
+                closeCreateModal();
+                showSuccessToast();
+                map.flyTo([currentCoords.lat, currentCoords.lng], Math.max(map.getZoom(), 10), { animate: true, duration: 1.5 });
+            } catch (error) { console.error("Error adding memory: ", error); } 
+            finally { sendMemoryBtn.textContent = "Send"; sendMemoryBtn.disabled = false; }
+        });
+
+        cancelCreate.addEventListener('click', closeCreateModal);
+        closeViewBtn.addEventListener('click', () => { 
+            viewModal.classList.remove('active'); 
+            const video = tiktokPlayer.querySelector('video'); 
+            if(video) video.pause(); 
+            if (unsubscribeComments) unsubscribeComments(); 
+        });
+
+        // ==================== NAVIGATION ====================
+        enterBtn.addEventListener('click', () => {
+            unlockAudio();
+            mapOverlay.classList.add('active');
+            mainContent.classList.add('hidden');
+            document.getElementById('embers-canvas').style.opacity = '0';
+            initMap();
+            setTimeout(() => { map.invalidateSize(); map.setView(CONFIG.mapCenter, CONFIG.mapZoom, { animate: true }); }, 100);
+        });
+
+        mapClose.addEventListener('click', () => { 
+            mapOverlay.classList.remove('active'); mainContent.classList.remove('hidden'); 
+            document.getElementById('embers-canvas').style.opacity = '1'; 
+        });
+
+        // ==================== INITIALIZE DATA ON LOAD ====================
+        loadMemories();
+        
+        // ==================== FEATURE: AMBIENT AUDIO (FIXED) ====================
+        const audioToggle = document.getElementById('audioToggle');
+        const ambientAudio = new Audio();
+        
+        ambientAudio.src = "https://cdn.pixabay.com/audio/2022/03/15/audio_115903e3bc.mp3";
+        ambientAudio.loop = true;
+        ambientAudio.volume = 0.5; 
+        ambientAudio.crossOrigin = "anonymous";
+
+        audioToggle.addEventListener('click', () => {
+            if (ambientAudio.paused) {
+                ambientAudio.play().then(() => {
+                    audioToggle.classList.add('playing');
+                }).catch(e => console.error("Audio Play Error:", e));
+            } else {
+                ambientAudio.pause();
+                audioToggle.classList.remove('playing');
+            }
+        });
+
+        const mainEnterBtn = document.getElementById('enterBtn');
+        
+        mainEnterBtn.addEventListener('click', () => {
+            if (ambientAudio.paused) {
+                ambientAudio.play().then(() => {
+                    audioToggle.classList.add('playing');
+                }).catch(e => console.log("Audio play blocked:", e));
+            }
+        });
+        
+        const startAudioOnFirstInteraction = () => {
+            if (ambientAudio.paused) {
+                ambientAudio.play().then(() => {
+                    audioToggle.classList.add('playing');
+                }).catch(e => {});
+            }
+            document.removeEventListener('click', startAudioOnFirstInteraction);
+        };
+        document.addEventListener('click', startAudioOnFirstInteraction);
+
+        // ==================== FEATURE: I'M FEELING LOST ====================
+        const lostBtn = document.getElementById('lostBtn');
+        lostBtn.addEventListener('click', () => {
+            const validMemories = memories.filter(m => m.coords && m.coords.lat && m.coords.lng);
+            if (validMemories.length === 0) { alert("No memories have been placed yet. Be the first!"); return; }
+            const randomMemory = validMemories[Math.floor(Math.random() * validMemories.length)];
+            map.flyTo([randomMemory.coords.lat, randomMemory.coords.lng], 10, { animate: true, duration: 2.5 });
+            setTimeout(() => { openViewModal(randomMemory); }, 1500);
+        });
+
+        // ==================== FEATURE: GHOST TRAILS (Custom Dropdown) ====================
+        const dropdown = document.getElementById('filterDropdown');
+        const dropdownSelected = document.getElementById('dropdownSelected');
+        const dropdownMenu = document.getElementById('dropdownMenu');
+        const dropdownOptions = document.querySelectorAll('.dropdown-option');
+        const selectedText = dropdownSelected.querySelector('span');
+        
+        dropdownSelected.addEventListener('click', () => { dropdown.classList.toggle('open'); });
+        document.addEventListener('click', (e) => { if (!dropdown.contains(e.target)) dropdown.classList.remove('open'); });
+
+        dropdownOptions.forEach(option => {
+            option.addEventListener('mouseenter', () => { applyGhostFilter(option.dataset.value); });
+            option.addEventListener('mouseleave', () => { removeGhostFilter(); });
+            option.addEventListener('click', () => {
+                dropdownOptions.forEach(o => o.classList.remove('active'));
+                option.classList.add('active');
+                selectedText.textContent = option.textContent;
+                dropdown.classList.remove('open');
+                activeFilter = option.dataset.value;
+                updateClusters();
+            });
+        });
+
+        function applyGhostFilter(type) {
+            if (!markersLayer) return;
+            markersLayer.clearLayers();
+            let filtered = memories;
+            if (type !== 'all') filtered = memories.filter(m => m.type.toLowerCase() === type.toLowerCase());
+            renderMarkers(filtered);
+        }
+
+        function removeGhostFilter() { updateClusters(); }
+
+        // ==================== FIX: SMALLER MARKERS IN GHOST TRAILS ====================
+        function renderMarkers(targetMemories) {
+            if (!map || !markersLayer) return;
+            markersLayer.clearLayers();
+            const clusters = []; const markers = [];
+            targetMemories.forEach(m => { if(m.coords) markers.push({ ...m, point: map.latLngToContainerPoint(m.coords) }); });
+            markers.forEach(m => {
+                let addedToCluster = false;
+                for (let c of clusters) {
+                    const dist = Math.sqrt(Math.pow(m.point.x - c.center.x, 2) + Math.pow(m.point.y - c.center.y, 2));
+                    if (dist < CONFIG.clusterRadius) { 
+                        c.memories.push(m); 
+                        c.center.x = (c.center.x * (c.memories.length - 1) + m.point.x) / c.memories.length; 
+                        c.center.y = (c.center.y * (c.memories.length - 1) + m.point.y) / c.memories.length; 
+                        addedToCluster = true; break; 
+                    }
+                }
+                if (!addedToCluster) clusters.push({ center: { x: m.point.x, y: m.point.y }, memories: [m] });
+            });
+
+            clusters.forEach(cluster => {
+                const count = cluster.memories.length;
+                const avgLat = cluster.memories.reduce((sum, m) => sum + m.coords.lat, 0) / count;
+                const avgLng = cluster.memories.reduce((sum, m) => sum + m.coords.lng, 0) / count;
+                
+                // FIX: Reduced size calculation
+                const size = Math.min(60, 28 + (count * 4));
+                const fontSize = count > 9 ? '0.9rem' : '0.8rem';
+                let clusterColor = '#D4896A';
+                
+                const icon = L.divIcon({ className: 'cluster-icon', html: `<div class="marker-cluster" style="width:${size}px; height:${size}px; font-size:${fontSize}; background:${clusterColor}; box-shadow: 0 0 0 4px ${clusterColor}33;">${count}</div>`, iconSize: [size, size], iconAnchor: [size/2, size/2] });
+                const marker = L.marker([avgLat, avgLng], { icon: icon });
+                marker.on('click', () => { if (count === 1) openViewModal(cluster.memories[0]); else map.flyTo([avgLat, avgLng], Math.min(map.getZoom() + 2, 18)); });
+                markersLayer.addLayer(marker);
+            });
+        }
+    </script>
+</body>
+</html>
