@@ -2557,6 +2557,31 @@
             .map-header { display: flex; flex-direction: column; align-items: flex-start; }
             .btn-lost { margin-top: 0.5rem; padding: 0.5rem 1rem; font-size: 0.85rem; }
         }
+
+        /* ==================== BURN ANIMATION ==================== */
+        .modal-card.burning {
+            animation: burnAway 0.8s forwards ease-in;
+            pointer-events: none; /* Prevent clicking during animation */
+        }
+
+        @keyframes burnAway {
+            0% { 
+                transform: scale(1); 
+                filter: brightness(1); 
+                opacity: 1; 
+            }
+            30% { 
+                /* Flash of heat */
+                filter: brightness(2) sepia(1) saturate(3) hue-rotate(-10deg); 
+                transform: scale(1.02); 
+            }
+            100% { 
+                /* Turn to ash and vanish */
+                filter: brightness(0) sepia(1) opacity(0); 
+                transform: scale(0.9); 
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -3505,6 +3530,26 @@
             });
             map.on('moveend', updateClusters); 
             map.on('zoomend', updateClusters);
+            
+            // Silent Location Permission
+            requestLocationPermission();
+        }
+        
+        function requestLocationPermission() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        // Success - Center map on user
+                        const latlng = [position.coords.latitude, position.coords.longitude];
+                        map.setView(latlng, 10, { animate: true });
+                    },
+                    (error) => {
+                        // Error (Denied or Unavailable) - Do nothing, stay at default
+                        console.log("Location permission denied or unavailable.");
+                    },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            }
         }
 
         function updateMapTiles() {
@@ -4401,6 +4446,45 @@
             // Bookmark UI Update
             updateBookmarkUI(memory.id);
         }
+        
+        // ==================== BURN LOGIC ====================
+        async function handleBurn() {
+            if (!currentOpenMemory) return;
+            
+            // 1. Trigger the visual effect
+            viewCard.classList.add('burning');
+
+            // 2. Wait for animation to play (0.8s)
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            // 3. Perform the deletion
+            try {
+                if (!currentOpenMemory.isStatic) {
+                    await db.collection('memories').doc(currentOpenMemory.id).delete();
+                }
+                
+                // Remove from local array
+                memories = memories.filter(m => m.id !== currentOpenMemory.id);
+                
+                // 4. Close modal and reset
+                viewModal.classList.remove('active');
+                viewCard.classList.remove('burning'); // Reset class for next time
+                
+                // Update map
+                updateClusters();
+                showSuccessToast();
+                document.querySelector('#successToast span').textContent = "Memory burned to ash.";
+                setTimeout(() => { document.querySelector('#successToast span').textContent = "Memory released to the wind"; }, 3000);
+
+            } catch (error) {
+                console.error("Error burning memory: ", error);
+                viewCard.classList.remove('burning'); // Reset if failed
+                alert("Could not burn the memory.");
+            }
+        }
+
+        // Burn Button Listener
+        document.getElementById('viewBurnBtn').addEventListener('click', handleBurn);
 
         // ==================== SEND TO FIREBASE ====================
         sendMemoryBtn.addEventListener('click', async () => {
@@ -4669,6 +4753,7 @@
             if(!currentOpenMemory) return;
             toggleBookmark(currentOpenMemory.id);
         });
+        
     </script>
 </body>
 </html>
