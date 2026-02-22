@@ -2135,7 +2135,12 @@
             .view-message { font-size: 1.1rem; max-height: 35vh; } /* Smaller text box */
             
             #view-modal .modal-card {
-                max-height: 62vh; /* FIX: Tighter fit so dock is visible */
+                max-height: 75vh; /* Slightly taller to accommodate buttons */
+            }
+
+            /* FIX: Push footer buttons up so they aren't covered by the reactions dock */
+            .view-footer-row {
+                margin-bottom: 75px; 
             }
             
             .reactions-external-dock {
@@ -2152,6 +2157,7 @@
                 border: none;
                 border-top: 1px solid var(--border-subtle);
                 box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+                z-index: 20; /* Ensure it sits above content */
             }
 
             [data-theme="dark"] .reactions-external-dock {
@@ -2189,11 +2195,16 @@
             /* Notification Bell Mobile */
             .notification-btn { width: 42px; height: 42px; }
             
+            /* FIX: Notification Panel fits phone screen */
             .notification-panel {
-                width: calc(100vw - 2rem); /* Full width almost */
-                right: -0.5rem; /* Align closer to edge */
-                top: 55px;
-                max-height: 60vh;
+                position: fixed; /* Break out of container */
+                top: 4.5rem; /* Sit below top bar */
+                left: 1rem;
+                right: 1rem;
+                bottom: auto;
+                width: auto; /* Auto width based on left/right */
+                max-height: 70vh; /* Don't take full height */
+                border-radius: 16px;
             }
 
             /* Map Header Mobile */
@@ -2205,7 +2216,7 @@
 
             /* Filter Controls Mobile - Move down to avoid overlap */
             .map-filter-container {
-                top: 7.5rem; /* FIX: Moved down below header/close */
+                top: 8.5rem; /* FIX: Moved further down below header/close */
                 width: calc(100% - 2rem);
                 padding: 0.4rem 0.8rem;
             }
@@ -4702,20 +4713,29 @@
             const ref = db.collection('users').doc(currentUser.uid).collection('bookmarks').doc(memoryId);
             const isBookmarked = bookmarkedMemories.includes(memoryId);
 
+            // Optimistic UI Update (Update immediately before DB response)
+            if (isBookmarked) {
+                bookmarkedMemories = bookmarkedMemories.filter(id => id !== memoryId);
+            } else {
+                bookmarkedMemories.push(memoryId);
+            }
+            updateBookmarkUI(memoryId); // Update icon color immediately
+
             try {
                 if (isBookmarked) {
                     await ref.delete();
-                    bookmarkedMemories = bookmarkedMemories.filter(id => id !== memoryId);
                 } else {
                     await ref.set({ 
                         savedAt: firebase.firestore.FieldValue.serverTimestamp(),
                         text: currentOpenMemory.text.substring(0, 100) // Optional: cache text
                     });
-                    bookmarkedMemories.push(memoryId);
                 }
-                updateBookmarkUI(memoryId);
             } catch (err) {
                 console.error("Bookmark error:", err);
+                // Revert on error
+                if (isBookmarked) bookmarkedMemories.push(memoryId);
+                else bookmarkedMemories = bookmarkedMemories.filter(id => id !== memoryId);
+                updateBookmarkUI(memoryId);
             }
         }
 
